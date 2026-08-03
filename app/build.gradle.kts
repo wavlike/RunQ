@@ -46,6 +46,10 @@ android {
 }
 
 dependencies {
+
+    implementation("com.squareup.retrofit2:retrofit:2.11.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     // 안정적인 Compose BOM 버전으로 변경 (2024년 4월 버전이 가장 무난합니다)
     implementation(platform("androidx.compose:compose-bom:2024.04.00"))
 
