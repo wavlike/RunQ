@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -33,221 +34,138 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 
 // ════════════════════════════════════════════════════════
-// 홈 화면: 피그마 스타일 세련된 레이아웃
+// 홈 화면: "10 Home/Main.png" 기준 — 라임→라벤더 그라데이션 히어로 + 검색 + 거리칩 + Today's Run
 // ════════════════════════════════════════════════════════
 @Composable
-fun HomeScreen(onNavigateToClub: () -> Unit) {
-    var showMenu by remember { mutableStateOf(false) }
+fun HomeScreen(onFindCourses: () -> Unit) {
     var safety by remember { mutableStateOf<SafetyInfo?>(null) }
-    var selectedReviewCourse by remember { mutableStateOf<Course?>(null) }
+    var distanceFilter by remember { mutableStateOf("전체") }
+    var searchText by remember { mutableStateOf("") }
+    val featured = remember { allCourses.maxByOrNull { it.rating } ?: allCourses.first() }
 
     LaunchedEffect(Unit) {
         try { safety = fetchSafety() } catch (e: Exception) { }
     }
 
-    if (selectedReviewCourse != null) {
-        ReviewDetailDialog(course = selectedReviewCourse!!) { selectedReviewCourse = null }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RunWhite),
-        contentPadding = PaddingValues(bottom = 20.dp)
-    ) {
-        // 상단 헤더
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(Modifier.size(28.dp)) 
-                Image(
-                    painter = painterResource(R.drawable.runq_logo), 
-                    contentDescription = "Run Q", 
-                    modifier = Modifier.height(30.dp)
+    Column(modifier = Modifier.fillMaxSize().background(RunCream)) {
+        Box(
+            modifier = Modifier.fillMaxWidth().background(
+                Brush.linearGradient(
+                    colors = listOf(RunLime.copy(alpha = 0.55f), RunCream, RunLavender.copy(alpha = 0.5f))
                 )
-                Box {
-                    Icon(
-                        Icons.Default.MoreVert, 
-                        contentDescription = "Settings", 
-                        modifier = Modifier.size(28.dp).clickable { showMenu = true }
-                    )
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.background(RunWhite)
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Profile Edit", color = RunBlack) },
-                            onClick = { showMenu = false }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Settings", color = RunBlack) },
-                            onClick = { showMenu = false }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Dark Mode", color = RunBlack) },
-                            onClick = { showMenu = false }
-                        )
-                    }
-                }
-            }
-        }
-
-        // 오늘의 날씨 브리핑
-        item {
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                Text("Today's Environment", fontWeight = FontWeight.Black, fontSize = 18.sp)
-                Spacer(Modifier.height(12.dp))
-                Card(
+            )
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = RunBgGray)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
+                    Text("RunQ", fontSize = 20.sp, fontWeight = FontWeight.Black, color = RunBlack)
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(RunWhite.copy(alpha = 0.7f)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        WeatherSmallItem("Temp", safety?.temp ?: "22°C")
-                        WeatherSmallItem("Rain", safety?.rain ?: "None")
-                        WeatherSmallItem("Dust", safety?.pm10 ?: "Good")
-                        WeatherSmallItem("Fitness", safety?.fitness ?: "Good", isHighlight = true)
+                        Icon(Icons.Default.Menu, contentDescription = "메뉴", tint = RunBlack, modifier = Modifier.size(20.dp))
                     }
                 }
-            }
-            Spacer(Modifier.height(32.dp))
-        }
-
-        // 1. 메인 배너 (Running Information)
-        item {
-            Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                Text("Running Information", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                Spacer(Modifier.height(28.dp))
+                Text(
+                    "오늘은 어디로\n달려볼까요?", fontSize = 26.sp, fontWeight = FontWeight.Black,
+                    color = RunBlack, lineHeight = 32.sp
+                )
                 Spacer(Modifier.height(16.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth().height(200.dp).clickable { /* 행사 정보 */ },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = RunBlack)
+                Row(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(RunWhite).padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Box(modifier = Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(listOf(Color.Transparent, RunBlack.copy(alpha = 0.6f)))
-                        ))
-                        Column(modifier = Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-                            Text("Half Marathon event held by\nMandiri Bank Group", 
-                                color = RunWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                        Box(modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
-                            Icon(Icons.Default.ChevronRight, null, tint = RunWhite, modifier = Modifier.size(32.dp))
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(32.dp))
-        }
-
-        // 2. Find The Spot Near You
-        item {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), 
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text("Find The Spot Near You", fontWeight = FontWeight.Black, fontSize = 18.sp)
-                Text("See all", color = RunGray, fontSize = 13.sp, modifier = Modifier.clickable { onNavigateToClub() })
-            }
-            Spacer(Modifier.height(16.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(listOf("Tangerang Runners", "JakBar Pacer", "Sunday Morning")) { spot ->
-                    SpotCard(spot, onNavigateToClub)
-                }
-            }
-            Spacer(Modifier.height(32.dp))
-        }
-
-        // 3. Running Course Review
-        item {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp), 
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                Text("Running Course Review", fontWeight = FontWeight.Black, fontSize = 18.sp)
-                Text("See all", color = RunGray, fontSize = 13.sp)
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
-        items(allCourses.take(4)) { course ->
-            HomeCourseCard(course) { selectedReviewCourse = course }
-        }
-    }
-}
-
-@Composable
-fun ReviewDetailDialog(course: Course, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = RunBlack)) { Text("Close", color = RunWhite) } },
-        title = { Text(text = "${course.name} Reviews", fontWeight = FontWeight.Black) },
-        text = {
-            Column {
-                course.reviews.forEach { review ->
-                    Row(modifier = Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
-                        Icon(Icons.Default.AccountCircle, null, tint = RunGray)
-                        Spacer(Modifier.width(8.dp))
-                        Text(review)
-                    }
-                }
-            }
-        },
-        containerColor = RunWhite
-    )
-}
-
-@Composable
-fun WeatherSmallItem(label: String, value: String, isHighlight: Boolean = false) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontWeight = FontWeight.Black, fontSize = 16.sp, color = if(isHighlight) RunPurple else RunBlack)
-        Text(label, fontSize = 11.sp, color = RunGray)
-    }
-}
-
-@Composable
-fun SpotCard(name: String, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.size(width = 180.dp, height = 110.dp).clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = RunBgGray)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                Text(name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = RunBlack)
-                Text("Indonesia", fontSize = 11.sp, color = RunGray)
-            }
-        }
-    }
-}
-
-@Composable
-fun HomeCourseCard(course: Course, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp).height(150.dp).clickable { onClick() },
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = RunBlack)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Text(course.name.uppercase(), color = RunWhite, fontWeight = FontWeight.Black, fontSize = 18.sp, lineHeight = 22.sp)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(RunWhite).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Star, null, tint = RunLime, modifier = Modifier.size(12.dp))
-                            Text(" ${course.rating}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
-                        }
-                    }
+                    Icon(Icons.Default.Search, contentDescription = null, tint = RunGray, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(course.distanceKm, color = RunLime, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    if (searchText.isEmpty()) {
+                        Text("코스, 거리, 장소를 검색해보세요", fontSize = 13.sp, color = RunGray)
+                    } else {
+                        Text(searchText, fontSize = 13.sp, color = RunBlack)
+                    }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(course.reviews.firstOrNull() ?: "", color = RunWhite.copy(alpha = 0.8f), fontSize = 12.sp, maxLines = 1)
+                Spacer(Modifier.height(20.dp))
+                Text("거리로 찾기", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("전체", "3km", "5km", "10km+").forEach { label ->
+                        val selected = distanceFilter == label
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                                .background(if (selected) RunPurple else RunWhite)
+                                .clickable { distanceFilter = label }
+                                .padding(horizontal = 16.dp, vertical = 9.dp)
+                        ) {
+                            Text(
+                                label, fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) RunWhite else RunBlack
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp)
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("오늘의 추천 코스", fontSize = 17.sp, fontWeight = FontWeight.Black, color = RunBlack)
+                    Text(
+                        "전체보기", fontSize = 13.sp, color = RunGray,
+                        modifier = Modifier.clickable { onFindCourses() }
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                TodaysRunCard(course = featured, safety = safety, onClick = onFindCourses)
+            }
+        }
+    }
+}
+
+@Composable
+fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = RunLime)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().background(
+                Brush.linearGradient(listOf(RunLime, RunLavender.copy(alpha = 0.8f)))
+            )
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Text("TODAY'S RUN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack.copy(alpha = 0.6f))
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "${course.location.removePrefix("강릉 ")}, ${course.distanceKm.lowercase()} 가볍게",
+                    fontSize = 19.sp, fontWeight = FontWeight.Black, color = RunBlack, lineHeight = 24.sp
+                )
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "${safety?.temp ?: "--"} · 미세먼지 ${safety?.pm10 ?: "-"} · 예상 ${course.estimatedTime}",
+                        fontSize = 12.sp, color = RunBlack.copy(alpha = 0.75f), modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(RunBlack)
+                            .padding(horizontal = 16.dp, vertical = 9.dp)
+                    ) {
+                        Text("코스 보기", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunWhite)
+                    }
+                }
             }
         }
     }
@@ -386,16 +304,5 @@ fun MetricItem(value: String, label: String) {
     }
 }
 
-@Composable
-fun HistoryScreen() {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("History Screen", fontWeight = FontWeight.Black, fontSize = 24.sp)
-    }
-}
-
-@Composable
-fun ClubScreen() {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("Club Screen", fontWeight = FontWeight.Black, fontSize = 24.sp)
-    }
-}
+// HistoryScreen / ClubScreen은 하단 탭이 4개(Home/Course/Run/Place)로 바뀌면서 제거됨.
+// My/History 관련 화면(Figma "40 My/*")은 다음 라운드에서 Home 메뉴 등으로 재배치 예정.
