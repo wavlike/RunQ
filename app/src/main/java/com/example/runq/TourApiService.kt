@@ -28,6 +28,20 @@ interface TourApi {
         @Query("arrange") arrange: String = "E",         // E = 거리순 정렬
         @Query("contentTypeId") contentTypeId: Int       // 12관광지 / 39음식점
     ): TourResponse
+
+    // 장소 상세정보 (Place Detail 화면에서 contentId로 조회)
+    @GET("detailCommon2")
+    suspend fun getDetailCommon(
+        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("contentId") contentId: String,
+        @Query("defaultYN") defaultYN: String = "Y",
+        @Query("firstImageYN") firstImageYN: String = "Y",
+        @Query("addrinfoYN") addrInfoYN: String = "Y",
+        @Query("overviewYN") overviewYN: String = "Y"
+    ): DetailCommonResponse
 }
 
 // Retrofit 객체 (앱 전체에서 하나만 만들어 재사용)

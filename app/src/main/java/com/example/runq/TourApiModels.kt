@@ -27,6 +27,7 @@ data class TourItemList(
 
 // 실제로 쓸 장소 하나의 정보
 data class TourPlace(
+    @SerializedName("contentid") val contentId: String?,  // 장소 상세조회(detailCommon2)용 ID
     @SerializedName("title") val title: String?,          // 장소명
     @SerializedName("addr1") val addr1: String?,          // 주소
     @SerializedName("firstimage") val firstImage: String?,// 대표 이미지 URL
@@ -34,4 +35,33 @@ data class TourPlace(
     @SerializedName("contenttypeid") val contentTypeId: String?, // 12관광지 / 39음식점 등
     @SerializedName("mapx") val mapX: String?,            // 경도
     @SerializedName("mapy") val mapY: String?             // 위도
+)
+
+// ────────────────────────────────────────────────
+// 장소 상세(detailCommon2) 응답
+// 응답 JSON 구조: response > body > items > item[] (locationBasedList2와 동일한 껍데기)
+// ────────────────────────────────────────────────
+data class DetailCommonResponse(
+    @SerializedName("response") val response: DetailCommonBody
+)
+
+data class DetailCommonBody(
+    @SerializedName("body") val body: DetailCommonItems
+)
+
+data class DetailCommonItems(
+    @SerializedName("items") val items: DetailCommonItemList?
+)
+
+data class DetailCommonItemList(
+    @SerializedName("item") val item: List<DetailCommonItem>?
+)
+
+data class DetailCommonItem(
+    @SerializedName("title") val title: String?,
+    @SerializedName("addr1") val addr1: String?,
+    @SerializedName("tel") val tel: String?,
+    @SerializedName("homepage") val homepage: String?,
+    @SerializedName("overview") val overview: String?,
+    @SerializedName("firstimage") val firstImage: String?
 )

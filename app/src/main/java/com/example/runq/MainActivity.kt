@@ -19,6 +19,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,43 +101,64 @@ data class Course(
     val reason: String, val nearby: String, val tags: List<String>,
     val lat: Double, val lng: Double,
     val rating: Double = 4.5,
-    val reviews: List<String> = listOf("코스가 정말 예뻐요!", "초보자도 뛰기 좋습니다.", "경치가 끝내줍니다.")
+    val reviews: List<String> = listOf("코스가 정말 예뻐요!", "초보자도 뛰기 좋습니다.", "경치가 끝내줍니다."),
+    // ── Finish Hub 연동 ──
+    // finishHubIds는 FinishHub.kt의 FinishHub.id를 참조하는 FK다. 반경/좌표/큐레이션
+    // 리스트는 Hub 쪽에 한 번만 저장하고 여기서는 id만 들고 있는 정규화된 구조를 쓴다.
+    // (두 Hub 경계에 걸치는 코스는 복수 id를 넣을 수 있음 — 이땐 첫 번째를 기본 Hub로 사용)
+    val finishHubIds: List<String> = emptyList(),
+    // 시작/종료 핀 좌표. 지금은 실측 좌표가 없어 lat/lng를 기본값으로 쓴다 —
+    // Finish Hub 추천 로직에는 필요 없고, 지도에 START/FINISH 마커를 찍을 때만 필요하다.
+    val startLat: Double = lat,
+    val startLng: Double = lng,
+    val finishLat: Double = lat,
+    val finishLng: Double = lng
 )
 
 val allCourses = listOf(
     Course("경포호 기본런", "강릉 경포호 둘레길", "약 4.3~5km", "5KM", "약 30~40분", "호수", "쉬움",
         "평지 위주라 초보 러너가 부담 없이 완주하기 좋아요.", "경포해변 카페거리, 허균·허난설헌 기념공원",
-        listOf("호수", "짧은코스", "쉬움", "초보추천"), 37.7955, 128.8962, 4.8, 
-        listOf("호수 따라 뛰니 힐링되네요.", "평지라 무릎 부담이 적어요.", "강릉 오면 꼭 뛰어야 하는 코스!")),
+        listOf("호수", "짧은코스", "쉬움", "초보추천"), 37.7955, 128.8962, 4.8,
+        listOf("호수 따라 뛰니 힐링되네요.", "평지라 무릎 부담이 적어요.", "강릉 오면 꼭 뛰어야 하는 코스!"),
+        finishHubIds = listOf("A")),
     Course("안목해변 커피거리 왕복런", "강릉 안목해변", "약 4.3~5km", "5KM", "약 30~40분", "바다", "쉬움",
         "바다를 끼고 달리다 커피거리에서 마무리하기 좋은 코스예요.", "안목 커피거리, 강문해변",
         listOf("바다", "짧은코스", "쉬움", "사진명소"), 37.7713, 128.9470, 4.7,
-        listOf("커피 향 맡으며 뛰니까 기분 최고!", "바다 바람이 시원해요.", "코스가 짧아서 부담 없어요.")),
+        listOf("커피 향 맡으며 뛰니까 기분 최고!", "바다 바람이 시원해요.", "코스가 짧아서 부담 없어요."),
+        finishHubIds = listOf("B")),
     Course("강문해변 짧은 해송런", "강릉 강문해변", "약 3~5km", "4KM", "약 20~35분", "바다", "쉬움",
         "해송길과 해변을 오가는 짧고 편안한 힐링 코스예요.", "강문해변, 송정해변",
-        listOf("바다", "짧은코스", "쉬움", "힐링"), 37.7936, 128.9163, 4.5),
+        listOf("바다", "짧은코스", "쉬움", "힐링"), 37.7936, 128.9163, 4.5,
+        finishHubIds = listOf("A")),
     Course("안목→강문→경포 바다런", "강릉 안목~경포", "약 5~7km", "6KM", "약 40~55분", "바다", "보통",
         "강릉 대표 바다 코스를 한 번에 이어 뛸 수 있어요.", "안목 커피거리, 경포해변",
         listOf("바다", "중거리", "보통", "관광연계"), 37.7825, 128.9310, 4.9,
-        listOf("강릉 바다 정복 완료!", "경치가 너무 예뻐서 멈추게 되네요.", "생각보다 길지만 보람차요.")),
+        listOf("강릉 바다 정복 완료!", "경치가 너무 예뻐서 멈추게 되네요.", "생각보다 길지만 보람차요."),
+        finishHubIds = listOf("B")),
     Course("경포호 10K", "강릉 경포호", "약 10km", "10KM", "약 60~75분", "호수", "보통",
         "경포호 2바퀴로 거리를 채우는 챌린지형 코스예요.", "경포대, 경포해변",
-        listOf("호수", "10K", "보통", "챌린지"), 37.7955, 128.8962, 4.6),
+        listOf("호수", "10K", "보통", "챌린지"), 37.7955, 128.8962, 4.6,
+        finishHubIds = listOf("A")),
     Course("남대천→안목해변 5K", "강릉 남대천~안목", "약 5km", "5KM", "약 35~45분", "강변", "쉬움",
         "도심 강변에서 바다로 빠지는 흐름이 좋은 코스예요.", "월화거리, 안목 커피거리",
-        listOf("강변", "5K", "쉬움", "카페연계"), 37.7590, 128.9080, 4.4),
+        listOf("강변", "5K", "쉬움", "카페연계"), 37.7590, 128.9080, 4.4,
+        finishHubIds = listOf("B")),
     Course("오죽헌→선교장→경포호", "강릉 오죽헌 일대", "약 5~7km", "6KM", "약 40~55분", "문화", "보통",
         "문화유산을 지나며 달리는 관광 연계 코스예요.", "오죽헌, 선교장",
-        listOf("문화", "중거리", "보통", "관광연계"), 37.7792, 128.8784, 4.3),
+        listOf("문화", "중거리", "보통", "관광연계"), 37.7792, 128.8784, 4.3,
+        finishHubIds = listOf("A", "C")),
     Course("경포생태저류지 메타세쿼이아길", "강릉 경포생태저류지", "약 2.5~4km", "3KM", "약 20~30분", "숲길", "쉬움",
         "조용한 숲길에서 산책하듯 달리는 힐링 코스예요.", "경포호, 가시연습지",
-        listOf("숲길", "짧은코스", "쉬움", "힐링"), 37.8010, 128.9010, 4.8),
+        listOf("숲길", "짧은코스", "쉬움", "힐링"), 37.8010, 128.9010, 4.8,
+        finishHubIds = listOf("A", "C")),
     Course("옥계 헌화로 11K", "강릉 옥계 헌화로", "약 11km", "11KM", "약 70~90분", "바다", "어려움",
         "해안 절경을 따라 달리는 상급자·대회형 코스예요.", "헌화로 해안도로, 옥계해변",
-        listOf("바다", "장거리", "어려움", "챌린지"), 37.6512, 129.0355, 4.2)
+        listOf("바다", "장거리", "어려움", "챌린지"), 37.6512, 129.0355, 4.2,
+        finishHubIds = listOf("H"))
 )
 
-data class NearbyPlace(val title: String, val addr: String, val category: String)
+// NearbyPlace / fetchNearby는 FinishHubPlace / fetchFinishHubPlaces(FinishHubScreens.kt)로
+// 대체됨. 완주 전 코스 상세 단계가 아니라 완주 후 Finish Hub 단계에서 조회한다.
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -355,19 +378,26 @@ fun MainWithTabs() {
 }
 
 // ════════════════════════════════════════════════════════
-// 코스 탭 내부 흐름: 탐색(목록) → 조건 → 결과 → 상세
+// 코스 탭 내부 흐름:
+// 탐색(목록) → 조건 → 결과 → 상세 → Run Ready → Running → Complete
+//   → Finish Hub(EAT/CAFE/SEE) → Place Detail
 // ════════════════════════════════════════════════════════
 sealed class CourseStep {
     object Browse : CourseStep() // 전체 목록 보기 (필터/정렬 포함)
     object Condition : CourseStep() // 맞춤 추천 조건 선택
     data class Result(val courses: List<Course>) : CourseStep()
     data class Detail(val course: Course, val from: CourseStep) : CourseStep()
+    data class RunReady(val course: Course, val from: CourseStep) : CourseStep()
+    data class Running(val course: Course) : CourseStep()
+    data class Complete(val course: Course, val distanceKm: Double) : CourseStep()
+    data class FinishHubStep(val course: Course) : CourseStep()
+    data class PlaceDetailStep(val course: Course, val place: FinishHubPlace) : CourseStep()
 }
 
 @Composable
 fun CourseFlow() {
     var step by remember { mutableStateOf<CourseStep>(CourseStep.Browse) }
-    
+
     when (val s = step) {
         is CourseStep.Browse -> BrowseScreen(
             onCourseClick = { step = CourseStep.Detail(it, CourseStep.Browse) },
@@ -382,7 +412,34 @@ fun CourseFlow() {
             onCourseClick = { step = CourseStep.Detail(it, s) },
             onBack = { step = CourseStep.Condition }
         )
-        is CourseStep.Detail -> DetailScreen(s.course) { step = s.from }
+        is CourseStep.Detail -> DetailScreen(
+            course = s.course,
+            onBack = { step = s.from },
+            onStart = { step = CourseStep.RunReady(s.course, s) }
+        )
+        is CourseStep.RunReady -> RunReadyScreen(
+            course = s.course,
+            onBack = { step = s.from },
+            onStart = { step = CourseStep.Running(s.course) }
+        )
+        is CourseStep.Running -> CourseRunningScreen(
+            course = s.course,
+            onFinish = { dist -> step = CourseStep.Complete(s.course, dist) }
+        )
+        is CourseStep.Complete -> CompleteScreen(
+            course = s.course,
+            distanceKm = s.distanceKm,
+            onGoToFinishHub = { step = CourseStep.FinishHubStep(s.course) }
+        )
+        is CourseStep.FinishHubStep -> FinishHubScreen(
+            course = s.course,
+            onBack = { step = CourseStep.Browse },
+            onPlaceClick = { place -> step = CourseStep.PlaceDetailStep(s.course, place) }
+        )
+        is CourseStep.PlaceDetailStep -> PlaceDetailScreen(
+            place = s.place,
+            onBack = { step = CourseStep.FinishHubStep(s.course) }
+        )
     }
 }
 
@@ -460,21 +517,6 @@ fun filterCourses(scenery: String, distance: String, difficulty: String): List<C
                 (difficulty == "상관없음" || c.difficulty == difficulty) &&
                 (distance == "상관없음" || c.tags.contains(distance))
     }
-}
-
-suspend fun fetchNearby(course: Course): List<NearbyPlace> {
-    val result = mutableListOf<NearbyPlace>()
-    val spots = TourApiClient.api.getNearbyPlaces(mapX = course.lng, mapY = course.lat, contentTypeId = 12)
-        .response.body.items?.item ?: emptyList()
-    spots.take(2).forEach { result.add(NearbyPlace(it.title ?: "-", it.addr1 ?: "", "관광지")) }
-    val foods = TourApiClient.api.getNearbyPlaces(mapX = course.lng, mapY = course.lat, contentTypeId = 39)
-        .response.body.items?.item ?: emptyList()
-    val cafeWords = listOf("카페", "커피", "베이커리", "로스터리", "coffee", "cafe")
-    foods.filter { p -> cafeWords.any { (p.title ?: "").contains(it, true) } }
-        .take(2).forEach { result.add(NearbyPlace(it.title ?: "-", it.addr1 ?: "", "카페")) }
-    foods.filter { p -> cafeWords.none { (p.title ?: "").contains(it, true) } }
-        .take(2).forEach { result.add(NearbyPlace(it.title ?: "-", it.addr1 ?: "", "맛집")) }
-    return result
 }
 
 // ══════════════════════════════════════════════════
@@ -701,24 +743,24 @@ fun Badge(text: String, color: Color) {
 }
 
 // ══════════════════════════════════════════════════
-// 코스: 상세 (★ API 호출 — 주변장소 + 안전정보)
+// 코스: 상세 (★ API 호출 — 안전정보만. 주변 장소는 완주 후 Finish Hub에서 조회)
 // ══════════════════════════════════════════════════
 @Composable
-fun DetailScreen(course: Course, onBack: () -> Unit) {
-    var places by remember { mutableStateOf<List<NearbyPlace>?>(null) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var safety by remember { mutableStateOf<SafetyInfo?>(null) }  // ★ 안전정보 추가
+fun DetailScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
+    var safety by remember { mutableStateOf<SafetyInfo?>(null) }
+    val hub = remember(course) { course.finishHubIds.firstOrNull()?.let { findHub(it) } }
 
     LaunchedEffect(course.name) {
-        // 주변 장소
-        try { places = fetchNearby(course) }
-        catch (e: Exception) { errorMsg = "주변 정보를 불러오지 못했어요. (네트워크 확인)"; places = emptyList() }
-        // 안전 정보 (실패해도 앱 안 죽게 따로 try)
         try { safety = fetchSafety() }
         catch (e: Exception) { safety = null }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp)
+    ) {
         Spacer(Modifier.height(16.dp))
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = RunBlack)) {
@@ -792,38 +834,40 @@ fun DetailScreen(course: Course, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(18.dp))
 
-        Text("주변 관광지 · 맛집 · 카페", fontWeight = FontWeight.Bold, color = RunBlack)
+        // ★ Finish Hub 미리보기 (실제 API 호출은 완주 후 Finish Hub 화면에서 진행)
+        Text("완주하면 만나는 Finish Hub", fontWeight = FontWeight.Bold, color = RunBlack)
         Spacer(Modifier.height(8.dp))
-        when {
-            places == null && errorMsg == null -> Row { CircularProgressIndicator(color = RunPurple) }
-            errorMsg != null -> Text(errorMsg!!, color = RunGray)
-            places!!.isEmpty() -> Text("주변 추천 장소를 찾지 못했어요.", color = RunGray)
-            else -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                items(places!!) { place ->
-                    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = RunBgGray)) {
-                        Column(Modifier.padding(14.dp)) {
-                            Row {
-                                Badge(place.category, RunLime)
-                                Spacer(Modifier.width(8.dp))
-                                Text(place.title, fontWeight = FontWeight.Bold, color = RunBlack)
-                            }
-                            if (place.addr.isNotBlank()) {
-                                Spacer(Modifier.height(4.dp))
-                                Text(place.addr, fontSize = 13.sp, color = RunGray)
-                            }
-                        }
-                    }
+        if (hub == null) {
+            Box(modifier = Modifier.fillMaxWidth().background(RunBgGray, RoundedCornerShape(12.dp)).padding(16.dp)) {
+                Text("이 코스는 아직 Finish Hub가 지정되지 않았어요.", fontSize = 13.sp, color = RunGray)
+            }
+        } else {
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = RunBgGray)) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("${hub.name} · 반경 ${hub.radiusLabel}", fontWeight = FontWeight.Bold, color = RunBlack)
+                    Spacer(Modifier.height(6.dp))
+                    Text("EAT  " + hub.curatedEat.take(2).joinToString(", "), fontSize = 12.sp, color = RunGray)
+                    Text("CAFE " + hub.curatedCafe.take(2).joinToString(", "), fontSize = 12.sp, color = RunGray)
+                    Text("SEE  " + hub.curatedSee.take(2).joinToString(", "), fontSize = 12.sp, color = RunGray)
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth().height(50.dp),
+        Spacer(Modifier.height(20.dp))
+
+        Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)) {
-            Text("처음으로", fontWeight = FontWeight.Bold)
+            Text("이 코스로 러닝 시작", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.5.dp, RunBlack),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)) {
+            Text("목록으로", fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
