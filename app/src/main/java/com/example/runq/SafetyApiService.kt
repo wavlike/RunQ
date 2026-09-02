@@ -16,7 +16,7 @@ import retrofit2.http.Query
 interface WeatherApi {
     @GET("getUltraSrtNcst")
     suspend fun getNowWeather(
-        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
         @Query("dataType") dataType: String = "JSON",
         @Query("numOfRows") numOfRows: Int = 60,
         @Query("pageNo") pageNo: Int = 1,
@@ -40,7 +40,7 @@ data class WeatherItem(
 interface AirApi {
     @GET("getCtprvnRltmMesureDnsty")
     suspend fun getAir(
-        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
         @Query("returnType") returnType: String = "json",
         @Query("numOfRows") numOfRows: Int = 100,
         @Query("pageNo") pageNo: Int = 1,

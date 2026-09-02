@@ -29,9 +29,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
 
 // ════════════════════════════════════════════════════════
 // 홈 화면: "10 Home/Main.png" 기준 — 라임→라벤더 그라데이션 히어로 + 검색 + 거리칩 + Today's Run
@@ -184,13 +181,25 @@ fun RunningScreen() {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
+    // 경포호 기본 위치 — 코스 선택 없이 자유러닝을 시작했을 때의 기본 지도 중심.
+    var currentLocation by remember { mutableStateOf(RoutePoint(37.7946, 128.9022)) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         hasLocationPermission = isGranted
     }
 
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(LatLng(37.7946, 128.9022), 15f) // 초기 강릉 경포호
+    // 코스 선택 없는 자유러닝이라 실시간 트래킹 대신 최근 위치를 한 번 가져와 지도 중심만 맞춘다.
+    // (연속 위치 추적은 실제 GPS 기록 기능 붙일 때 FusedLocationProviderClient로 교체)
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission) {
+            runCatching {
+                val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                val providers = lm.getProviders(true)
+                val last = providers.mapNotNull { lm.getLastKnownLocation(it) }
+                    .maxByOrNull { it.time }
+                last?.let { currentLocation = RoutePoint(it.latitude, it.longitude) }
+            }
+        }
     }
 
     // 시뮬레이션용 시간/거리 업데이트
@@ -204,11 +213,12 @@ fun RunningScreen() {
     Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
         // 지도 영역
         if (hasLocationPermission) {
-            GoogleMap(
+            KakaoRouteMap(
                 modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(isMyLocationEnabled = true),
-                uiSettings = MapUiSettings(myLocationButtonEnabled = false)
+                routePoints = emptyList(),
+                startPoint = currentLocation,
+                finishPoint = currentLocation,
+                currentLocation = currentLocation
             )
         } else {
             Box(Modifier.fillMaxSize().background(RunBgGray), contentAlignment = Alignment.Center) {

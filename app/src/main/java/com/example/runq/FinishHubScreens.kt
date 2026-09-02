@@ -1,6 +1,5 @@
 package com.example.runq
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,10 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -113,56 +109,34 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
 }
 
 // ════════════════════════════════════════════════════════
-// 공통 컴포넌트: 등고선 텍스처 + 코스 타원 경로 카드
+// 공통 컴포넌트: 코스 지도 카드 (Kakao MapView)
 // (Run Ready / Active / Paused / Complete / Course Detail Route에서 공용)
 // ════════════════════════════════════════════════════════
 @Composable
-fun RouteContourCard(title: String? = null, heightDp: Int = 260) {
+fun CourseMapCard(
+    course: Course,
+    title: String? = null,
+    heightDp: Int = 260,
+    currentLocation: RoutePoint? = null
+) {
     Box(
         modifier = Modifier.fillMaxWidth().height(heightDp.dp).clip(RoundedCornerShape(24.dp))
-            .background(RunBgGray)
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            // 손그림 노트 느낌의 대각선 줄무늬
-            val lineColor = Color(0xFFDAD6C8)
-            var y = -size.width
-            while (y < size.height + size.width) {
-                drawLine(
-                    color = lineColor,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y - size.width * 0.35f),
-                    strokeWidth = 1.2f
-                )
-                y += 26f
-            }
-            // 코스 모양을 흉내낸 타원 루프
-            val ovalW = size.width * 0.62f
-            val ovalH = size.height * 0.6f
-            val left = (size.width - ovalW) / 2f
-            val top = (size.height - ovalH) / 2f
-            drawOval(
-                color = Color(0xFFBFD9E8),
-                topLeft = Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(ovalW, ovalH)
-            )
-            drawOval(
-                color = Color(0xFF3D4A52),
-                topLeft = Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(ovalW, ovalH),
-                style = Stroke(width = 5f, cap = StrokeCap.Round)
-            )
-            // START/FINISH 지점 점
-            drawCircle(
-                color = Color(0xFF111111),
-                radius = 7f,
-                center = Offset(left + ovalW * 0.86f, top + ovalH * 0.88f)
-            )
-        }
+        KakaoRouteMap(
+            modifier = Modifier.fillMaxSize(),
+            routePoints = course.routePoints,
+            startPoint = RoutePoint(course.startLat, course.startLng),
+            finishPoint = RoutePoint(course.finishLat, course.finishLng),
+            currentLocation = currentLocation
+        )
         if (title != null) {
-            Text(
-                title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack,
+            Box(
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
-            )
+                    .clip(RoundedCornerShape(10.dp)).background(RunWhite.copy(alpha = 0.9f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            }
         }
     }
 }
@@ -191,7 +165,7 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
             }
         }
         Spacer(Modifier.height(20.dp))
-        RouteContourCard()
+        CourseMapCard(course = course)
         Spacer(Modifier.height(24.dp))
         Text("오늘의 러닝 환경", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RunBlack)
         Spacer(Modifier.height(10.dp))
@@ -229,6 +203,9 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
     var distance by remember { mutableStateOf(0.0) }
     var elapsedSeconds by remember { mutableStateOf(0) }
     var running by remember { mutableStateOf(true) }
+    val targetKm = remember(course) {
+        course.distanceKm.filter { it.isDigit() || it == '.' }.toDoubleOrNull()?.takeIf { it > 0 } ?: 5.0
+    }
 
     LaunchedEffect(running) {
         while (running) {
@@ -236,6 +213,13 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
             distance += 0.01
             elapsedSeconds += 1
         }
+    }
+
+    // GPS 실측 연동 전까지는 진행률(거리/목표거리)을 코스 경로에 투영해서 현재 위치처럼 보여준다.
+    val simulatedLocation = remember(course, distance, targetKm) {
+        val line = if (course.routePoints.size >= 2) course.routePoints
+            else listOf(RoutePoint(course.startLat, course.startLng), RoutePoint(course.finishLat, course.finishLng))
+        interpolateAlongRoute(line, (distance / targetKm).toFloat())
     }
 
     val paceLabel = remember(distance, elapsedSeconds) {
@@ -258,7 +242,7 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
             Text(course.name, fontSize = 12.sp, color = RunGray)
         }
         Spacer(Modifier.height(16.dp))
-        RouteContourCard()
+        CourseMapCard(course = course, currentLocation = simulatedLocation)
         Spacer(Modifier.height(20.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             MetricItem(String.format("%.2f km", distance), "거리")
@@ -321,7 +305,7 @@ fun CompleteScreen(
         Text("RUN COMPLETE", fontSize = 24.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Text("${course.name} 완료!", fontSize = 13.sp, color = RunGray)
         Spacer(Modifier.height(16.dp))
-        RouteContourCard()
+        CourseMapCard(course = course)
         Spacer(Modifier.height(20.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             MetricItem(String.format("%.2f km", distanceKm), "거리")

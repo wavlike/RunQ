@@ -7,17 +7,14 @@ import retrofit2.http.Query
 
 // ────────────────────────────────────────────────
 // TourAPI 통신 설정 + 인터페이스
+// 서비스키는 local.properties → BuildConfig.TOUR_API_KEY 로 주입됨 (소스에 직접 노출 안 함)
 // ────────────────────────────────────────────────
 
-// ⚠️⚠️ 여기에 본인 인증키(Decoding 키)를 붙여넣으세요 ⚠️⚠️
-// (지금은 빠르게 테스트하려고 여기 직접 넣어요. GitHub 올릴 땐 빼야 하는데,
-//  그 안전하게 빼는 방법은 이 단계 성공한 뒤에 알려줄게요.)
-const val TOUR_API_KEY = "HAVRC68bADYCJJkl96ezCrfFdamvQIi3mnhg7/avItL8WBE9yOcLbFHW+YB4FD+PVnXND/TGuKbk/78heKHAKg=="
 // API 요청을 정의하는 인터페이스
 interface TourApi {
     @GET("locationBasedList2")
     suspend fun getNearbyPlaces(
-        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
         @Query("MobileOS") mobileOS: String = "AND",
         @Query("MobileApp") mobileApp: String = "RunQ",
         @Query("_type") type: String = "json",
@@ -32,7 +29,7 @@ interface TourApi {
     // 장소 상세정보 (Place Detail 화면에서 contentId로 조회)
     @GET("detailCommon2")
     suspend fun getDetailCommon(
-        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
         @Query("MobileOS") mobileOS: String = "AND",
         @Query("MobileApp") mobileApp: String = "RunQ",
         @Query("_type") type: String = "json",

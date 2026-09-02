@@ -106,6 +106,13 @@ import kotlinx.coroutines.launch
 // ────────────────────────────────────────────────
 // 코스 데이터 모델
 // ────────────────────────────────────────────────
+
+// 지도 위 RouteLine에 쓰는 좌표 하나.
+// ⚠️ 아래 allCourses의 routePoints는 실측 GPS 트랙이 아니라, 코스 설명에 나오는
+// 지명(해변/공원 등)을 랜드마크 삼아 순서대로 이은 "근사 경로"다. 실제 보도/산책로
+// 곡선을 따라가지 않으니 인기 코스부터 실측 데이터로 교체할 것.
+data class RoutePoint(val lat: Double, val lng: Double)
+
 data class Course(
     val name: String, val location: String, val distance: String, val distanceKm: String,
     val estimatedTime: String, val scenery: String, val difficulty: String,
@@ -123,7 +130,9 @@ data class Course(
     val startLat: Double = lat,
     val startLng: Double = lng,
     val finishLat: Double = lat,
-    val finishLng: Double = lng
+    val finishLng: Double = lng,
+    // 지도 RouteLine용 경로 좌표. 비어있으면 start→finish 직선으로 대체.
+    val routePoints: List<RoutePoint> = emptyList()
 )
 
 val allCourses = listOf(
@@ -131,41 +140,84 @@ val allCourses = listOf(
         "평지 위주라 초보 러너가 부담 없이 완주하기 좋아요.", "경포해변 카페거리, 허균·허난설헌 기념공원",
         listOf("호수", "짧은코스", "쉬움", "초보추천"), 37.7955, 128.8962, 4.8,
         listOf("호수 따라 뛰니 힐링되네요.", "평지라 무릎 부담이 적어요.", "강릉 오면 꼭 뛰어야 하는 코스!"),
-        finishHubIds = listOf("A")),
+        finishHubIds = listOf("A"),
+        routePoints = listOf(
+            RoutePoint(37.7930, 128.8865), RoutePoint(37.7965, 128.8870),
+            RoutePoint(37.8000, 128.8910), RoutePoint(37.7995, 128.8985),
+            RoutePoint(37.7965, 128.9040), RoutePoint(37.7930, 128.9010),
+            RoutePoint(37.7905, 128.8940), RoutePoint(37.7930, 128.8865)
+        )),
     Course("안목해변 커피거리 왕복런", "강릉 안목해변", "약 4.3~5km", "5KM", "약 30~40분", "바다", "쉬움",
         "바다를 끼고 달리다 커피거리에서 마무리하기 좋은 코스예요.", "안목 커피거리, 강문해변",
         listOf("바다", "짧은코스", "쉬움", "사진명소"), 37.7713, 128.9470, 4.7,
         listOf("커피 향 맡으며 뛰니까 기분 최고!", "바다 바람이 시원해요.", "코스가 짧아서 부담 없어요."),
-        finishHubIds = listOf("B")),
+        finishHubIds = listOf("B"),
+        routePoints = listOf(
+            RoutePoint(37.7713, 128.9470), RoutePoint(37.7760, 128.9455),
+            RoutePoint(37.7810, 128.9430), RoutePoint(37.7760, 128.9455),
+            RoutePoint(37.7713, 128.9470)
+        )),
     Course("강문해변 짧은 해송런", "강릉 강문해변", "약 3~5km", "4KM", "약 20~35분", "바다", "쉬움",
         "해송길과 해변을 오가는 짧고 편안한 힐링 코스예요.", "강문해변, 송정해변",
         listOf("바다", "짧은코스", "쉬움", "힐링"), 37.7936, 128.9163, 4.5,
-        finishHubIds = listOf("A")),
+        finishHubIds = listOf("A"),
+        routePoints = listOf(
+            RoutePoint(37.7936, 128.9163), RoutePoint(37.7900, 128.9150),
+            RoutePoint(37.7870, 128.9140), RoutePoint(37.7900, 128.9150),
+            RoutePoint(37.7936, 128.9163)
+        )),
     Course("안목→강문→경포 바다런", "강릉 안목~경포", "약 5~7km", "6KM", "약 40~55분", "바다", "보통",
         "강릉 대표 바다 코스를 한 번에 이어 뛸 수 있어요.", "안목 커피거리, 경포해변",
         listOf("바다", "중거리", "보통", "관광연계"), 37.7825, 128.9310, 4.9,
         listOf("강릉 바다 정복 완료!", "경치가 너무 예뻐서 멈추게 되네요.", "생각보다 길지만 보람차요."),
-        finishHubIds = listOf("B")),
+        finishHubIds = listOf("B"),
+        routePoints = listOf(
+            RoutePoint(37.7713, 128.9470), RoutePoint(37.7820, 128.9300),
+            RoutePoint(37.7936, 128.9163), RoutePoint(37.8000, 128.9080)
+        )),
     Course("경포호 10K", "강릉 경포호", "약 10km", "10KM", "약 60~75분", "호수", "보통",
         "경포호 2바퀴로 거리를 채우는 챌린지형 코스예요.", "경포대, 경포해변",
         listOf("호수", "10K", "보통", "챌린지"), 37.7955, 128.8962, 4.6,
-        finishHubIds = listOf("A")),
+        finishHubIds = listOf("A"),
+        // 경포호 둘레길 2바퀴 — 1바퀴분 좌표만 저장하고 지도에서 2회 순회로 표시
+        routePoints = listOf(
+            RoutePoint(37.7930, 128.8865), RoutePoint(37.7965, 128.8870),
+            RoutePoint(37.8000, 128.8910), RoutePoint(37.7995, 128.8985),
+            RoutePoint(37.7965, 128.9040), RoutePoint(37.7930, 128.9010),
+            RoutePoint(37.7905, 128.8940), RoutePoint(37.7930, 128.8865)
+        )),
     Course("남대천→안목해변 5K", "강릉 남대천~안목", "약 5km", "5KM", "약 35~45분", "강변", "쉬움",
         "도심 강변에서 바다로 빠지는 흐름이 좋은 코스예요.", "월화거리, 안목 커피거리",
         listOf("강변", "5K", "쉬움", "카페연계"), 37.7590, 128.9080, 4.4,
-        finishHubIds = listOf("B")),
+        finishHubIds = listOf("B"),
+        routePoints = listOf(
+            RoutePoint(37.7519, 128.8971), RoutePoint(37.7580, 128.9150),
+            RoutePoint(37.7650, 128.9320), RoutePoint(37.7713, 128.9470)
+        )),
     Course("오죽헌→선교장→경포호", "강릉 오죽헌 일대", "약 5~7km", "6KM", "약 40~55분", "문화", "보통",
         "문화유산을 지나며 달리는 관광 연계 코스예요.", "오죽헌, 선교장",
         listOf("문화", "중거리", "보통", "관광연계"), 37.7792, 128.8784, 4.3,
-        finishHubIds = listOf("A", "C")),
+        finishHubIds = listOf("A", "C"),
+        routePoints = listOf(
+            RoutePoint(37.7792, 128.8784), RoutePoint(37.7850, 128.8830),
+            RoutePoint(37.7930, 128.8870), RoutePoint(37.7955, 128.8962)
+        )),
     Course("경포생태저류지 메타세쿼이아길", "강릉 경포생태저류지", "약 2.5~4km", "3KM", "약 20~30분", "숲길", "쉬움",
         "조용한 숲길에서 산책하듯 달리는 힐링 코스예요.", "경포호, 가시연습지",
         listOf("숲길", "짧은코스", "쉬움", "힐링"), 37.8010, 128.9010, 4.8,
-        finishHubIds = listOf("A", "C")),
+        finishHubIds = listOf("A", "C"),
+        routePoints = listOf(
+            RoutePoint(37.8010, 128.9010), RoutePoint(37.8000, 128.8970),
+            RoutePoint(37.7985, 128.8940), RoutePoint(37.8010, 128.9010)
+        )),
     Course("옥계 헌화로 11K", "강릉 옥계 헌화로", "약 11km", "11KM", "약 70~90분", "바다", "어려움",
         "해안 절경을 따라 달리는 상급자·대회형 코스예요.", "헌화로 해안도로, 옥계해변",
         listOf("바다", "장거리", "어려움", "챌린지"), 37.6512, 129.0355, 4.2,
-        finishHubIds = listOf("H"))
+        finishHubIds = listOf("H"),
+        routePoints = listOf(
+            RoutePoint(37.6512, 129.0355), RoutePoint(37.6480, 129.0300),
+            RoutePoint(37.6420, 129.0230), RoutePoint(37.6350, 129.0150)
+        ))
 )
 
 // NearbyPlace / fetchNearby는 FinishHubPlace / fetchFinishHubPlaces(FinishHubScreens.kt)로
@@ -961,7 +1013,7 @@ fun DetailScreen(
 
         Text("ROUTE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunGray)
         Spacer(Modifier.height(8.dp))
-        RouteContourCard(title = course.name, heightDp = 200)
+        CourseMapCard(course = course, title = course.name, heightDp = 200)
         Spacer(Modifier.height(24.dp))
 
         Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(56.dp),
