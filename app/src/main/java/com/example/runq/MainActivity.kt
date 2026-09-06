@@ -104,124 +104,11 @@ import androidx.compose.ui.graphics.Brush
 import kotlinx.coroutines.launch
 
 // ────────────────────────────────────────────────
-// 코스 데이터 모델
-// ────────────────────────────────────────────────
-
-// 지도 위 RouteLine에 쓰는 좌표 하나.
-// ⚠️ 아래 allCourses의 routePoints는 실측 GPS 트랙이 아니라, 코스 설명에 나오는
-// 지명(해변/공원 등)을 랜드마크 삼아 순서대로 이은 "근사 경로"다. 실제 보도/산책로
-// 곡선을 따라가지 않으니 인기 코스부터 실측 데이터로 교체할 것.
-data class RoutePoint(val lat: Double, val lng: Double)
-
-data class Course(
-    val name: String, val location: String, val distance: String, val distanceKm: String,
-    val estimatedTime: String, val scenery: String, val difficulty: String,
-    val reason: String, val nearby: String, val tags: List<String>,
-    val lat: Double, val lng: Double,
-    val rating: Double = 4.5,
-    val reviews: List<String> = listOf("코스가 정말 예뻐요!", "초보자도 뛰기 좋습니다.", "경치가 끝내줍니다."),
-    // ── Finish Hub 연동 ──
-    // finishHubIds는 FinishHub.kt의 FinishHub.id를 참조하는 FK다. 반경/좌표/큐레이션
-    // 리스트는 Hub 쪽에 한 번만 저장하고 여기서는 id만 들고 있는 정규화된 구조를 쓴다.
-    // (두 Hub 경계에 걸치는 코스는 복수 id를 넣을 수 있음 — 이땐 첫 번째를 기본 Hub로 사용)
-    val finishHubIds: List<String> = emptyList(),
-    // 시작/종료 핀 좌표. 지금은 실측 좌표가 없어 lat/lng를 기본값으로 쓴다 —
-    // Finish Hub 추천 로직에는 필요 없고, 지도에 START/FINISH 마커를 찍을 때만 필요하다.
-    val startLat: Double = lat,
-    val startLng: Double = lng,
-    val finishLat: Double = lat,
-    val finishLng: Double = lng,
-    // 지도 RouteLine용 경로 좌표. 비어있으면 start→finish 직선으로 대체.
-    val routePoints: List<RoutePoint> = emptyList()
-)
-
-val allCourses = listOf(
-    Course("경포호 기본런", "강릉 경포호 둘레길", "약 4.3~5km", "5KM", "약 30~40분", "호수", "쉬움",
-        "평지 위주라 초보 러너가 부담 없이 완주하기 좋아요.", "경포해변 카페거리, 허균·허난설헌 기념공원",
-        listOf("호수", "짧은코스", "쉬움", "초보추천"), 37.7955, 128.8962, 4.8,
-        listOf("호수 따라 뛰니 힐링되네요.", "평지라 무릎 부담이 적어요.", "강릉 오면 꼭 뛰어야 하는 코스!"),
-        finishHubIds = listOf("A"),
-        routePoints = listOf(
-            RoutePoint(37.7930, 128.8865), RoutePoint(37.7965, 128.8870),
-            RoutePoint(37.8000, 128.8910), RoutePoint(37.7995, 128.8985),
-            RoutePoint(37.7965, 128.9040), RoutePoint(37.7930, 128.9010),
-            RoutePoint(37.7905, 128.8940), RoutePoint(37.7930, 128.8865)
-        )),
-    Course("안목해변 커피거리 왕복런", "강릉 안목해변", "약 4.3~5km", "5KM", "약 30~40분", "바다", "쉬움",
-        "바다를 끼고 달리다 커피거리에서 마무리하기 좋은 코스예요.", "안목 커피거리, 강문해변",
-        listOf("바다", "짧은코스", "쉬움", "사진명소"), 37.7713, 128.9470, 4.7,
-        listOf("커피 향 맡으며 뛰니까 기분 최고!", "바다 바람이 시원해요.", "코스가 짧아서 부담 없어요."),
-        finishHubIds = listOf("B"),
-        routePoints = listOf(
-            RoutePoint(37.7713, 128.9470), RoutePoint(37.7760, 128.9455),
-            RoutePoint(37.7810, 128.9430), RoutePoint(37.7760, 128.9455),
-            RoutePoint(37.7713, 128.9470)
-        )),
-    Course("강문해변 짧은 해송런", "강릉 강문해변", "약 3~5km", "4KM", "약 20~35분", "바다", "쉬움",
-        "해송길과 해변을 오가는 짧고 편안한 힐링 코스예요.", "강문해변, 송정해변",
-        listOf("바다", "짧은코스", "쉬움", "힐링"), 37.7936, 128.9163, 4.5,
-        finishHubIds = listOf("A"),
-        routePoints = listOf(
-            RoutePoint(37.7936, 128.9163), RoutePoint(37.7900, 128.9150),
-            RoutePoint(37.7870, 128.9140), RoutePoint(37.7900, 128.9150),
-            RoutePoint(37.7936, 128.9163)
-        )),
-    Course("안목→강문→경포 바다런", "강릉 안목~경포", "약 5~7km", "6KM", "약 40~55분", "바다", "보통",
-        "강릉 대표 바다 코스를 한 번에 이어 뛸 수 있어요.", "안목 커피거리, 경포해변",
-        listOf("바다", "중거리", "보통", "관광연계"), 37.7825, 128.9310, 4.9,
-        listOf("강릉 바다 정복 완료!", "경치가 너무 예뻐서 멈추게 되네요.", "생각보다 길지만 보람차요."),
-        finishHubIds = listOf("B"),
-        routePoints = listOf(
-            RoutePoint(37.7713, 128.9470), RoutePoint(37.7820, 128.9300),
-            RoutePoint(37.7936, 128.9163), RoutePoint(37.8000, 128.9080)
-        )),
-    Course("경포호 10K", "강릉 경포호", "약 10km", "10KM", "약 60~75분", "호수", "보통",
-        "경포호 2바퀴로 거리를 채우는 챌린지형 코스예요.", "경포대, 경포해변",
-        listOf("호수", "10K", "보통", "챌린지"), 37.7955, 128.8962, 4.6,
-        finishHubIds = listOf("A"),
-        // 경포호 둘레길 2바퀴 — 1바퀴분 좌표만 저장하고 지도에서 2회 순회로 표시
-        routePoints = listOf(
-            RoutePoint(37.7930, 128.8865), RoutePoint(37.7965, 128.8870),
-            RoutePoint(37.8000, 128.8910), RoutePoint(37.7995, 128.8985),
-            RoutePoint(37.7965, 128.9040), RoutePoint(37.7930, 128.9010),
-            RoutePoint(37.7905, 128.8940), RoutePoint(37.7930, 128.8865)
-        )),
-    Course("남대천→안목해변 5K", "강릉 남대천~안목", "약 5km", "5KM", "약 35~45분", "강변", "쉬움",
-        "도심 강변에서 바다로 빠지는 흐름이 좋은 코스예요.", "월화거리, 안목 커피거리",
-        listOf("강변", "5K", "쉬움", "카페연계"), 37.7590, 128.9080, 4.4,
-        finishHubIds = listOf("B"),
-        routePoints = listOf(
-            RoutePoint(37.7519, 128.8971), RoutePoint(37.7580, 128.9150),
-            RoutePoint(37.7650, 128.9320), RoutePoint(37.7713, 128.9470)
-        )),
-    Course("오죽헌→선교장→경포호", "강릉 오죽헌 일대", "약 5~7km", "6KM", "약 40~55분", "문화", "보통",
-        "문화유산을 지나며 달리는 관광 연계 코스예요.", "오죽헌, 선교장",
-        listOf("문화", "중거리", "보통", "관광연계"), 37.7792, 128.8784, 4.3,
-        finishHubIds = listOf("A", "C"),
-        routePoints = listOf(
-            RoutePoint(37.7792, 128.8784), RoutePoint(37.7850, 128.8830),
-            RoutePoint(37.7930, 128.8870), RoutePoint(37.7955, 128.8962)
-        )),
-    Course("경포생태저류지 메타세쿼이아길", "강릉 경포생태저류지", "약 2.5~4km", "3KM", "약 20~30분", "숲길", "쉬움",
-        "조용한 숲길에서 산책하듯 달리는 힐링 코스예요.", "경포호, 가시연습지",
-        listOf("숲길", "짧은코스", "쉬움", "힐링"), 37.8010, 128.9010, 4.8,
-        finishHubIds = listOf("A", "C"),
-        routePoints = listOf(
-            RoutePoint(37.8010, 128.9010), RoutePoint(37.8000, 128.8970),
-            RoutePoint(37.7985, 128.8940), RoutePoint(37.8010, 128.9010)
-        )),
-    Course("옥계 헌화로 11K", "강릉 옥계 헌화로", "약 11km", "11KM", "약 70~90분", "바다", "어려움",
-        "해안 절경을 따라 달리는 상급자·대회형 코스예요.", "헌화로 해안도로, 옥계해변",
-        listOf("바다", "장거리", "어려움", "챌린지"), 37.6512, 129.0355, 4.2,
-        finishHubIds = listOf("H"),
-        routePoints = listOf(
-            RoutePoint(37.6512, 129.0355), RoutePoint(37.6480, 129.0300),
-            RoutePoint(37.6420, 129.0230), RoutePoint(37.6350, 129.0150)
-        ))
-)
-
+// 코스 데이터 모델은 FinishHub.kt(Course/FinishHub) + RunQData.kt(assets/data/*.json 로더)로
+// 이전됨. 여기 있던 allCourses 하드코딩 9개 샘플은 삭제 — RunQData.courses를 사용할 것.
 // NearbyPlace / fetchNearby는 FinishHubPlace / fetchFinishHubPlaces(FinishHubScreens.kt)로
 // 대체됨. 완주 전 코스 상세 단계가 아니라 완주 후 Finish Hub 단계에서 조회한다.
+// ────────────────────────────────────────────────
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -544,22 +431,14 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
     }
 }
 
-private fun Course.distanceKmValue(): Double =
-    distanceKm.filter { it.isDigit() || it == '.' }.toDoubleOrNull() ?: 0.0
-
 // "20 Course/List.png" 기준: 헤더 + 거리 필터칩 + 화살표 리스트 카드
 @Composable
 fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> Unit) {
     var distanceFilter by remember { mutableStateOf("전체") }
 
     val displayedCourses = remember(distanceFilter) {
-        allCourses.filter { c ->
-            when (distanceFilter) {
-                "3km" -> c.distanceKmValue() <= 3.5
-                "5km" -> c.distanceKmValue() in 3.5..7.0
-                "10km+" -> c.distanceKmValue() > 7.0
-                else -> true
-            }
+        RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.filter { c ->
+            distanceFilter == "전체" || c.matchesDistanceBucket(distanceFilter)
         }.sortedByDescending { it.rating }
     }
 
@@ -627,10 +506,16 @@ fun CourseListRow(course: Course, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text(course.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(course.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    if (course.status == ContentStatus.DRAFT) {
+                        Spacer(Modifier.width(6.dp))
+                        DraftBadge()
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "${course.distanceKm.lowercase()} · ${course.scenery} · ${course.difficulty}",
+                    "${course.distanceLabel()} · ${course.sceneryLabel()} · ${course.difficulty.label}",
                     fontSize = 13.sp, color = RunGray
                 )
             }
@@ -641,10 +526,10 @@ fun CourseListRow(course: Course, onClick: () -> Unit) {
 
 
 fun filterCourses(scenery: String, distance: String, difficulty: String): List<Course> {
-    return allCourses.filter { c ->
-        (scenery == "상관없음" || c.scenery == scenery) &&
-                (difficulty == "상관없음" || c.difficulty == difficulty) &&
-                (distance == "상관없음" || c.tags.contains(distance))
+    return RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.filter { c ->
+        (scenery == "상관없음" || c.sceneryLabel() == scenery) &&
+                (difficulty == "상관없음" || c.difficulty.label == difficulty) &&
+                (distance == "상관없음" || c.matchesDistanceBucket(distance))
     }
 }
 
@@ -880,19 +765,25 @@ fun CourseCard(course: Course, onClick: () -> Unit) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(course.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunWhite)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(course.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunWhite)
+                    if (course.status == ContentStatus.DRAFT) {
+                        Spacer(Modifier.width(6.dp))
+                        DraftBadge()
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Star, null, tint = RunLime, modifier = Modifier.size(16.dp))
                     Text(" ${course.rating}", color = RunWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Text(course.distanceKm, fontSize = 34.sp, fontWeight = FontWeight.Black, color = RunLime)
+            Text(course.distanceLabel(), fontSize = 34.sp, fontWeight = FontWeight.Black, color = RunLime)
             Spacer(Modifier.height(10.dp))
             Row {
-                Badge("#${course.scenery}", RunPurple)
+                Badge("#${course.sceneryLabel()}", RunPurple)
                 Spacer(Modifier.width(6.dp))
-                Badge("난이도 ${course.difficulty}", RunGray)
+                Badge("난이도 ${course.difficulty.label}", RunGray)
             }
         }
     }
@@ -902,6 +793,18 @@ fun CourseCard(course: Course, onClick: () -> Unit) {
 fun Badge(text: String, color: Color) {
     Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color).padding(horizontal = 10.dp, vertical = 4.dp)) {
         Text(text, fontSize = 12.sp, color = RunBlack, fontWeight = FontWeight.Bold)
+    }
+}
+
+// 팀 콘텐츠가 아직 확정되지 않은(status=DRAFT) 코스를 개발 빌드에서 숨기지 않고
+// 작은 배지로 구분 표시하기로 함(콘텐츠 미확정 상태를 사용자에게도 투명하게 노출).
+@Composable
+fun DraftBadge() {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(RunGray.copy(alpha = 0.25f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text("DRAFT", fontSize = 10.sp, color = RunGray, fontWeight = FontWeight.Black)
     }
 }
 
@@ -937,10 +840,16 @@ fun DetailScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "ISSUE 01 · ${course.location.removePrefix("강릉 ").ifBlank { "GANGNEUNG" }}".uppercase(),
-                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunGray
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "ISSUE 01 · ${course.locationLabel().removePrefix("강릉 ").ifBlank { "GANGNEUNG" }}".uppercase(),
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunGray
+                )
+                if (course.status == ContentStatus.DRAFT) {
+                    Spacer(Modifier.width(6.dp))
+                    DraftBadge()
+                }
+            }
             Box(
                 modifier = Modifier.size(36.dp).clip(CircleShape).background(RunWhite).clickable { onBack() },
                 contentAlignment = Alignment.Center
@@ -955,10 +864,10 @@ fun DetailScreen(
 
         Text("WHY THIS RUN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunPurple)
         Spacer(Modifier.height(8.dp))
-        Text(course.reason, fontSize = 20.sp, fontWeight = FontWeight.Black, color = RunBlack, lineHeight = 27.sp)
+        Text(course.reasonText(), fontSize = 20.sp, fontWeight = FontWeight.Black, color = RunBlack, lineHeight = 27.sp)
         Spacer(Modifier.height(10.dp))
         Text(
-            "${course.location}을 따라 이어지는 ${course.distanceKm} 루트를 중심으로, " +
+            "${course.locationLabel()}을 따라 이어지는 ${course.distanceLabel()} 루트를 중심으로, " +
                 "러닝 뒤 가볍게 들를 수 있는 카페·식사·관광 동선을 함께 묶은 RunQ 큐레이션이에요.",
             fontSize = 13.sp, color = RunGray, lineHeight = 19.sp
         )
@@ -967,13 +876,13 @@ fun DetailScreen(
         Text("QUICK INFO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunPurple)
         Spacer(Modifier.height(12.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
-            QuickInfoCell("거리", course.distanceKm, Modifier.weight(1f))
-            QuickInfoCell("예상", course.estimatedTime, Modifier.weight(1f))
+            QuickInfoCell("거리", course.distanceLabel(), Modifier.weight(1f))
+            QuickInfoCell("예상", course.timeLabel(), Modifier.weight(1f))
         }
         Spacer(Modifier.height(14.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
-            QuickInfoCell("난이도", course.difficulty, Modifier.weight(1f))
-            QuickInfoCell("추천", course.scenery, Modifier.weight(1f))
+            QuickInfoCell("난이도", course.difficulty.label, Modifier.weight(1f))
+            QuickInfoCell("추천", course.sceneryLabel(), Modifier.weight(1f))
         }
         Spacer(Modifier.height(24.dp))
 
@@ -996,7 +905,7 @@ fun DetailScreen(
         Text("RUN → EAT → CAFE → SEE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunPurple)
         Spacer(Modifier.height(8.dp))
         Text(
-            "달린 뒤까지 이어지는 ${course.location.removePrefix("강릉 ")} 코스",
+            "달린 뒤까지 이어지는 ${course.locationLabel().removePrefix("강릉 ")} 코스",
             fontSize = 19.sp, fontWeight = FontWeight.Black, color = RunBlack, lineHeight = 25.sp
         )
         Spacer(Modifier.height(14.dp))
@@ -1005,9 +914,12 @@ fun DetailScreen(
                 Text("이 코스는 아직 Finish Hub가 지정되지 않았어요.", fontSize = 13.sp, color = RunGray)
             }
         } else {
-            HubCategoryRow("01", "EAT", RunLime, hub.curatedEat.firstOrNull()?.let { "$it 등에서 가볍게 한 끼" } ?: "") { onOpenCategory(PlaceCategory.EAT) }
-            HubCategoryRow("02", "CAFE", RunPurple, hub.curatedCafe.firstOrNull()?.let { "$it 등에서 잠깐 쉬기" } ?: "") { onOpenCategory(PlaceCategory.CAFE) }
-            HubCategoryRow("03", "SEE", RunLavender, hub.curatedSee.firstOrNull()?.let { "$it 주변을 천천히 둘러보기" } ?: "") { onOpenCategory(PlaceCategory.SEE) }
+            val eatPick = RunQData.places.firstOrNull { it.finishHubId == hub.id && it.category == PlaceCategory.EAT }
+            val cafePick = RunQData.places.firstOrNull { it.finishHubId == hub.id && it.category == PlaceCategory.CAFE }
+            val seePick = RunQData.places.firstOrNull { it.finishHubId == hub.id && it.category == PlaceCategory.SEE }
+            HubCategoryRow("01", "EAT", RunLime, eatPick?.let { "${it.title} 등에서 가볍게 한 끼" } ?: "") { onOpenCategory(PlaceCategory.EAT) }
+            HubCategoryRow("02", "CAFE", RunPurple, cafePick?.let { "${it.title} 등에서 잠깐 쉬기" } ?: "") { onOpenCategory(PlaceCategory.CAFE) }
+            HubCategoryRow("03", "SEE", RunLavender, seePick?.let { "${it.title} 주변을 천천히 둘러보기" } ?: "") { onOpenCategory(PlaceCategory.SEE) }
         }
         Spacer(Modifier.height(24.dp))
 
@@ -1061,7 +973,7 @@ fun CourseCoverPlaceholder(course: Course) {
         ) {
             Text("FULL LOOP", color = RunWhite, fontWeight = FontWeight.Black, fontSize = 22.sp)
             Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(RunLime).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                Text(course.distanceKm, color = RunBlack, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Text(course.distanceLabel(), color = RunBlack, fontWeight = FontWeight.Black, fontSize = 13.sp)
             }
         }
     }

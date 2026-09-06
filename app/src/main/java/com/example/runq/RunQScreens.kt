@@ -38,7 +38,7 @@ fun HomeScreen(onFindCourses: () -> Unit) {
     var safety by remember { mutableStateOf<SafetyInfo?>(null) }
     var distanceFilter by remember { mutableStateOf("전체") }
     var searchText by remember { mutableStateOf("") }
-    val featured = remember { allCourses.maxByOrNull { it.rating } ?: allCourses.first() }
+    val featured = remember { RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.maxByOrNull { it.rating } }
 
     LaunchedEffect(Unit) {
         try { safety = fetchSafety() } catch (e: Exception) { }
@@ -125,7 +125,11 @@ fun HomeScreen(onFindCourses: () -> Unit) {
                     )
                 }
                 Spacer(Modifier.height(14.dp))
-                TodaysRunCard(course = featured, safety = safety, onClick = onFindCourses)
+                if (featured != null) {
+                    TodaysRunCard(course = featured, safety = safety, onClick = onFindCourses)
+                } else {
+                    Text("아직 등록된 코스가 없어요.", fontSize = 13.sp, color = RunGray)
+                }
             }
         }
     }
@@ -147,13 +151,13 @@ fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
                 Text("TODAY'S RUN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack.copy(alpha = 0.6f))
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${course.location.removePrefix("강릉 ")}, ${course.distanceKm.lowercase()} 가볍게",
+                    "${course.locationLabel().removePrefix("강릉 ")}, ${course.distanceLabel()} 가볍게",
                     fontSize = 19.sp, fontWeight = FontWeight.Black, color = RunBlack, lineHeight = 24.sp
                 )
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        "${safety?.temp ?: "--"} · 미세먼지 ${safety?.pm10 ?: "-"} · 예상 ${course.estimatedTime}",
+                        "${safety?.temp ?: "--"} · 미세먼지 ${safety?.pm10 ?: "-"} · 예상 ${course.timeLabel()}",
                         fontSize = 12.sp, color = RunBlack.copy(alpha = 0.75f), modifier = Modifier.weight(1f)
                     )
                     Box(

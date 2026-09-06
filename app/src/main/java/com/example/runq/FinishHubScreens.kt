@@ -28,8 +28,8 @@ import kotlinx.coroutines.delay
 // Finish Hub 기준 EAT / CAFE / SEE 조회
 //
 // 코스 완주 → course.finishHubIds[0] → findHub() → hub 좌표+반경으로
-// TourAPI locationBasedList2를 호출한다. API 결과를 그대로 다 보여주지 않고
-// hub.curated* 이름과 매칭되는 장소를 "RunQ Pick"으로 맨 위에 고정한다.
+// TourAPI locationBasedList2를 호출한다. RunQData.places(엑셀 큐레이션)에 있는
+// 장소를 "RunQ Pick"으로 맨 위에 고정하고, API 결과는 뒤에 보충한다.
 // ════════════════════════════════════════════════════════
 
 enum class PlaceCategory(val label: String, val accent: Color) {
@@ -40,9 +40,18 @@ data class FinishHubPlace(
     val title: String,
     val addr: String,
     val category: PlaceCategory,
-    val contentId: String? = null,   // TourAPI 결과일 때만 값이 있음 → Place Detail에서 상세조회 가능
-    val distMeters: String? = null,  // TourAPI dist(m). curated 전용 항목은 null
-    val isCurated: Boolean = false   // RunQ가 직접 고른 장소인지
+    val contentId: String? = null,     // TourAPI 결과일 때만 값이 있음 → Place Detail에서 상세조회 가능
+    val distMeters: String? = null,    // TourAPI dist(m) 또는 distance_from_hub_m
+    val id: String? = null,            // place_id (RunQ 큐레이션 항목만)
+    val finishHubId: String? = null,
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val shortCopy: String? = null,
+    val recommendReason: String? = null,
+    val isFeatured: Boolean = false,
+    val displayOrder: Int = 999,
+    val status: ContentStatus = ContentStatus.ACTIVE,
+    val isCurated: Boolean = false     // RunQ 큐레이션(엑셀) 출처인지
 )
 
 data class FinishHubResult(
@@ -55,33 +64,27 @@ data class FinishHubResult(
 private val cafeKeywords = listOf("카페", "커피", "베이커리", "로스터리", "coffee", "cafe")
 private val seeContentTypeIds = listOf(12, 14, 15, 28) // 관광지 / 문화시설 / 축제행사 / 레포츠
 
-// curated 이름을 API 결과 맨 앞에 고정하고, 아직 API에서 못 찾은 curated 항목도
-// "RunQ Pick" 카드로는 노출한다 (API 원본 그대로 노출하기보다 RunQ 큐레이션 우선 노출).
-private fun mergeCurated(
-    curatedNames: List<String>,
-    apiResults: List<FinishHubPlace>,
-    category: PlaceCategory
-): List<FinishHubPlace> {
-    val matchedTitles = mutableSetOf<String>()
-    val curatedFirst = curatedNames.map { name ->
-        val found = apiResults.find { it.title.contains(name) || name.contains(it.title) }
-        if (found != null) {
-            matchedTitles.add(found.title)
-            found.copy(isCurated = true)
-        } else {
-            FinishHubPlace(title = name, addr = "", category = category, isCurated = true)
-        }
-    }
-    val rest = apiResults.filter { it.title !in matchedTitles }
-    return curatedFirst + rest
+// RunQData.places(엑셀 큐레이션)를 먼저 노출하고, 이름이 겹치지 않는 API 결과만 뒤에 붙인다.
+private fun curatedPlaces(hub: FinishHub, category: PlaceCategory): List<FinishHubPlace> =
+    RunQData.places
+        .filter { it.finishHubId == hub.id && it.category == category && it.status != ContentStatus.HIDDEN }
+        .sortedBy { it.displayOrder }
+
+private fun mergeCurated(curated: List<FinishHubPlace>, apiResults: List<FinishHubPlace>): List<FinishHubPlace> {
+    val curatedTitles = curated.map { it.title }
+    val rest = apiResults.filter { api -> curatedTitles.none { it.contains(api.title) || api.title.contains(it) } }
+    return curated + rest
 }
 
 suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
+    val hubLat = hub.resolvedLat
+    val hubLng = hub.resolvedLng
+
     // EAT + CAFE 후보: TourAPI 음식점(contentTypeId=39)에서 카페 키워드로 1차 분리
     // (TourAPI에는 카페 전용 contentTypeId가 없음 → P1에서 Kakao Local CE7로 보완 예정)
     val foodItems = runCatching {
         TourApiClient.api.getNearbyPlaces(
-            mapX = hub.lng, mapY = hub.lat, radius = hub.radiusMeters, contentTypeId = 39
+            mapX = hubLng, mapY = hubLat, radius = maxOf(hub.eatRadiusM, hub.cafeRadiusM), contentTypeId = 39
         ).response.body.items?.item ?: emptyList()
     }.getOrDefault(emptyList())
 
@@ -94,7 +97,7 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
     val seeApiRaw = seeContentTypeIds.flatMap { typeId ->
         runCatching {
             TourApiClient.api.getNearbyPlaces(
-                mapX = hub.lng, mapY = hub.lat, radius = hub.radiusMeters, contentTypeId = typeId
+                mapX = hubLng, mapY = hubLat, radius = hub.seeRadiusM, contentTypeId = typeId
             ).response.body.items?.item ?: emptyList()
         }.getOrDefault(emptyList())
     }.distinctBy { it.title }
@@ -102,9 +105,9 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
 
     return FinishHubResult(
         hub = hub,
-        eat = mergeCurated(hub.curatedEat, eatApiRaw, PlaceCategory.EAT),
-        cafe = mergeCurated(hub.curatedCafe, cafeApiRaw, PlaceCategory.CAFE),
-        see = mergeCurated(hub.curatedSee, seeApiRaw, PlaceCategory.SEE)
+        eat = mergeCurated(curatedPlaces(hub, PlaceCategory.EAT), eatApiRaw),
+        cafe = mergeCurated(curatedPlaces(hub, PlaceCategory.CAFE), cafeApiRaw),
+        see = mergeCurated(curatedPlaces(hub, PlaceCategory.SEE), seeApiRaw)
     )
 }
 
@@ -125,8 +128,8 @@ fun CourseMapCard(
         KakaoRouteMap(
             modifier = Modifier.fillMaxSize(),
             routePoints = course.routePoints,
-            startPoint = RoutePoint(course.startLat, course.startLng),
-            finishPoint = RoutePoint(course.finishLat, course.finishLng),
+            startPoint = course.startPoint(),
+            finishPoint = course.finishPoint(),
             currentLocation = currentLocation
         )
         if (title != null) {
@@ -177,7 +180,7 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
             ) {
                 SafetyMetric("기온", safety?.temp ?: "-")
                 SafetyMetric("미세먼지", safety?.pm10 ?: "-")
-                SafetyMetric("예상 시간", course.estimatedTime)
+                SafetyMetric("예상 시간", course.timeLabel())
             }
         }
         Spacer(Modifier.weight(1f))
@@ -203,9 +206,7 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
     var distance by remember { mutableStateOf(0.0) }
     var elapsedSeconds by remember { mutableStateOf(0) }
     var running by remember { mutableStateOf(true) }
-    val targetKm = remember(course) {
-        course.distanceKm.filter { it.isDigit() || it == '.' }.toDoubleOrNull()?.takeIf { it > 0 } ?: 5.0
-    }
+    val targetKm = remember(course) { course.distanceKm?.takeIf { it > 0 } ?: 5.0 }
 
     LaunchedEffect(running) {
         while (running) {
@@ -218,7 +219,7 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
     // GPS 실측 연동 전까지는 진행률(거리/목표거리)을 코스 경로에 투영해서 현재 위치처럼 보여준다.
     val simulatedLocation = remember(course, distance, targetKm) {
         val line = if (course.routePoints.size >= 2) course.routePoints
-            else listOf(RoutePoint(course.startLat, course.startLng), RoutePoint(course.finishLat, course.finishLng))
+            else listOfNotNull(course.startPoint(), course.finishPoint())
         interpolateAlongRoute(line, (distance / targetKm).toFloat())
     }
 
@@ -320,7 +321,8 @@ fun CompleteScreen(
         } else {
             NextStepRow("EAT", "러닝 후 든든하게 · ${hub.name} Finish Hub") { onCategoryClick(PlaceCategory.EAT) }
             Spacer(Modifier.height(10.dp))
-            NextStepRow("CAFE", hub.curatedCafe.firstOrNull()?.let { "$it 등에서 잠깐 쉬기" } ?: "호수뷰 카페에서 잠깐 쉬기") { onCategoryClick(PlaceCategory.CAFE) }
+            val cafePick = RunQData.places.firstOrNull { it.finishHubId == hub.id && it.category == PlaceCategory.CAFE }
+            NextStepRow("CAFE", cafePick?.let { "${it.title} 등에서 잠깐 쉬기" } ?: "카페에서 잠깐 쉬기") { onCategoryClick(PlaceCategory.CAFE) }
             Spacer(Modifier.height(10.dp))
             NextStepRow("SEE", "${hub.name} 주변을 천천히 둘러보기") { onCategoryClick(PlaceCategory.SEE) }
         }
@@ -402,7 +404,7 @@ fun PlaceHomeScreen(onHubClick: (FinishHub, PlaceCategory) -> Unit) {
         Text("FINISH HUB", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunGray)
         Spacer(Modifier.height(10.dp))
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(finishHubs) { hub ->
+            items(RunQData.finishHubs.filter { it.status != ContentStatus.HIDDEN }) { hub ->
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { onHubClick(hub, category) },
                     shape = RoundedCornerShape(16.dp),
@@ -416,8 +418,11 @@ fun PlaceHomeScreen(onHubClick: (FinishHub, PlaceCategory) -> Unit) {
                         Column {
                             Text(hub.name, fontSize = 15.sp, fontWeight = FontWeight.Black, color = RunBlack)
                             Spacer(Modifier.height(2.dp))
+                            val eatCount = RunQData.places.count { it.finishHubId == hub.id && it.category == PlaceCategory.EAT }
+                            val cafeCount = RunQData.places.count { it.finishHubId == hub.id && it.category == PlaceCategory.CAFE }
+                            val seeCount = RunQData.places.count { it.finishHubId == hub.id && it.category == PlaceCategory.SEE }
                             Text(
-                                "EAT ${hub.curatedEat.size} · CAFE ${hub.curatedCafe.size} · SEE ${hub.curatedSee.size}",
+                                "EAT $eatCount · CAFE $cafeCount · SEE $seeCount",
                                 fontSize = 12.sp, color = RunGray
                             )
                         }
