@@ -33,6 +33,7 @@ import com.kakao.vectormap.route.RouteLineOptions
 import com.kakao.vectormap.route.RouteLineSegment
 import com.kakao.vectormap.route.RouteLineStyle
 import com.kakao.vectormap.route.RouteLineStyles
+import com.kakao.vectormap.route.RouteLineStylesSet
 
 // ════════════════════════════════════════════════════════
 // Kakao Maps SDK v2 공용 지도 컴포저블.
@@ -131,9 +132,12 @@ fun KakaoRouteMap(
             runCatching { label.moveTo(position) }
         } else {
             runCatching {
-                currentLocationLabel = map.labelManager?.layer?.addLabel(
-                    LabelOptions.from(position)
-                        .setStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_invisible)))
+                val labelManager = map.labelManager
+                val styles = labelManager?.addLabelStyles(
+                    LabelStyles.from(LabelStyle.from(android.R.drawable.presence_invisible))
+                )
+                currentLocationLabel = labelManager?.layer?.addLabel(
+                    LabelOptions.from(position).setStyles(styles)
                 )
             }
         }
@@ -190,13 +194,13 @@ private fun drawRoute(
     val latLngs = line.map { LatLng.from(it.lat, it.lng) }
 
     runCatching {
-        val routeLineManager = kakaoMap.routeLineManager
-        val layer = routeLineManager?.layer
+        val layer = kakaoMap.routeLineManager?.layer
         layer?.removeAll()
-        val styles = routeLineManager?.addStyles(
+        // RouteLineStylesSet은 매니저에 등록하는 게 아니라 from()으로 바로 만들어서 쓴다.
+        val stylesSet = RouteLineStylesSet.from(
             RouteLineStyles.from(RouteLineStyle.from(14f, android.graphics.Color.parseColor("#BB87E3")))
         )
-        val segment = RouteLineSegment.from(latLngs).setStyles(styles?.getStyles(0))
+        val segment = RouteLineSegment.from(latLngs).setStyles(stylesSet.getStyles(0))
         layer?.addRouteLine(RouteLineOptions.from(segment))
     }
 
@@ -206,14 +210,11 @@ private fun drawRoute(
         layer?.removeAll()
         val start = startPoint ?: line.first()
         val finish = finishPoint ?: line.last()
-        layer?.addLabel(
-            LabelOptions.from(LatLng.from(start.lat, start.lng))
-                .setStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_online)))
-        )
-        layer?.addLabel(
-            LabelOptions.from(LatLng.from(finish.lat, finish.lng))
-                .setStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_busy)))
-        )
+        // LabelStyles는 LabelManager.addLabelStyles()로 등록해야 실제로 쓸 수 있는 스타일이 된다.
+        val startStyles = labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_online)))
+        val finishStyles = labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_busy)))
+        layer?.addLabel(LabelOptions.from(LatLng.from(start.lat, start.lng)).setStyles(startStyles))
+        layer?.addLabel(LabelOptions.from(LatLng.from(finish.lat, finish.lng)).setStyles(finishStyles))
     }
 
     runCatching {
