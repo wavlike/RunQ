@@ -13,11 +13,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -161,7 +163,7 @@ fun CourseMapCard(
 }
 
 // ════════════════════════════════════════════════════════
-// Run Ready: "22 Course/Run Ready.png" 기준
+// Run Ready: Figma "22 Course / Run Ready" 기준
 // ════════════════════════════════════════════════════════
 @Composable
 fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
@@ -170,52 +172,75 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
         safety = runCatching { fetchSafety(course.weatherGrid()) }.getOrNull()
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(RunCream).padding(24.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = RunBlack)
-            }
-            Spacer(Modifier.width(4.dp))
-            Column {
-                Text("러닝 준비", fontSize = 20.sp, fontWeight = FontWeight.Black, color = RunBlack)
-                Text(course.name, fontSize = 13.sp, color = RunGray)
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-        CourseMapCard(course = course)
-        Spacer(Modifier.height(24.dp))
-        Text("오늘의 러닝 환경", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RunBlack)
-        Spacer(Modifier.height(10.dp))
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = RunWhite)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                SafetyMetric("기온", safety?.temp ?: "-")
-                SafetyMetric("미세먼지", safety?.pm10 ?: "-")
-                SafetyMetric("예상 시간", course.timeLabel())
-            }
-        }
-        Spacer(Modifier.weight(1f))
-        Button(
-            onClick = onStart,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RunBlack, contentColor = RunWhite)
-        ) { Text("러닝 시작", fontSize = 16.sp, fontWeight = FontWeight.Black) }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "GPS와 위치 권한을 확인한 뒤 시작합니다.", fontSize = 12.sp, color = RunGray,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+    Box(modifier = Modifier.fillMaxSize().background(RunCream)) {
+        Box(
+            modifier = Modifier.size(260.dp).offset(x = (-115).dp, y = (-97).dp).blur(60.dp)
+                .background(Brush.radialGradient(listOf(RunLime.copy(alpha = 0.5f), Color.Transparent)), CircleShape)
         )
+        Box(
+            modifier = Modifier.size(240.dp).offset(x = 235.dp, y = (-32).dp).blur(60.dp)
+                .background(Brush.radialGradient(listOf(RunLavender.copy(alpha = 0.5f), Color.Transparent)), CircleShape)
+        )
+
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(56.dp))
+            Box(
+                modifier = Modifier.size(38.dp).clip(CircleShape).background(RunWhite)
+                    .border(1.dp, RunBorderGray, CircleShape).clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = RunBlack, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(course.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RunBlack, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.height(20.dp))
+            CourseMapCard(course = course, heightDp = 300)
+            Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp))
+                    .background(RunWhite).padding(16.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    EnvChip("☀️ ${safety?.temp?.let { "맑음 $it" } ?: "날씨 확인중"}", Color(0xFFFBF8D9), Modifier.weight(1f))
+                    EnvChip("🍃 미세먼지 ${safety?.pm10 ?: "-"}", Color(0xFFF1F6EC), Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(16.dp))
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(RunBorderGray))
+                Spacer(Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    CourseInfoLine("거리", course.distanceLabel(), Modifier.weight(1f))
+                    CourseInfoLine("예상 소요시간", course.timeLabel(), Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    CourseInfoLine("코스 특징", course.terrain.label, Modifier.weight(1f))
+                    CourseInfoLine("교통량", course.trafficLevel.label, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
+                ) { Text("러닝 시작하기", fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun EnvChip(text: String, color: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.clip(RoundedCornerShape(23.dp)).background(color).padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = RunBlack, maxLines = 1)
     }
 }
 
 // ════════════════════════════════════════════════════════
-// Running: "23 Run/Active.png" · "24 Run/Paused.png" 기준
+// Running: Figma "23 Run / Active" · "24 Run / Paused" 기준
 // ════════════════════════════════════════════════════════
 @Composable
 fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSeconds: Int) -> Unit) {
@@ -238,6 +263,7 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
             else listOfNotNull(course.startPoint(), course.finishPoint())
         interpolateAlongRoute(line, (distance / targetKm).toFloat())
     }
+    val progress = remember(distance, targetKm) { (distance / targetKm).toFloat().coerceIn(0f, 1f) }
 
     val paceLabel = remember(distance, elapsedSeconds) {
         if (distance < 0.01) "0'00\"" else {
@@ -247,50 +273,129 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
     }
     val durationLabel = remember(elapsedSeconds) {
         val h = elapsedSeconds / 3600; val m = (elapsedSeconds % 3600) / 60; val s = elapsedSeconds % 60
-        "%02d:%02d:%02d".format(h, m, s)
+        if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(RunCream).padding(24.dp)) {
-        if (running) {
-            Text(course.name, fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
-            Text("RUNNING", fontSize = 12.sp, color = RunGray)
-        } else {
-            Text("러닝 일시정지", fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
-            Text(course.name, fontSize = 12.sp, color = RunGray)
+    Box(modifier = Modifier.fillMaxSize().background(RunCream)) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(20.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                UtilityPill("잠금", Modifier.weight(1f))
+                UtilityPill("설정", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(14.dp))
+            CourseMapCard(course = course, currentLocation = simulatedLocation, heightDp = 300)
+            Spacer(Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(course.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Text("${(progress * 100).toInt()}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            }
+            Spacer(Modifier.height(8.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFE0DED4))) {
+                Box(modifier = Modifier.fillMaxWidth(progress).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(RunLime))
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "${String.format("%.2f", distance)} / ${course.distanceLabel()}",
+                fontSize = 10.sp, color = RunGray
+            )
+            Spacer(Modifier.height(24.dp))
+            Text(
+                String.format("%.2f", distance), fontSize = 56.sp, fontWeight = FontWeight.Bold, color = RunBlack,
+                modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Text("KM", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(Modifier.height(20.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                RunStat(paceLabel, "평균 페이스", Modifier.weight(1f))
+                Box(modifier = Modifier.width(1.dp).height(58.dp).background(RunBorderGray))
+                RunStat(durationLabel, "운동 시간", Modifier.weight(1f))
+            }
+            Spacer(Modifier.weight(1f))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier.size(76.dp).clip(CircleShape).background(RunLime)
+                        .clickable { running = false },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Pause, contentDescription = "일시정지", tint = RunBlack, modifier = Modifier.size(28.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("일시정지", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            }
+            Spacer(Modifier.height(20.dp))
         }
-        Spacer(Modifier.height(16.dp))
-        CourseMapCard(course = course, currentLocation = simulatedLocation)
-        Spacer(Modifier.height(20.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MetricItem(String.format("%.2f km", distance), "거리")
-            MetricItem(durationLabel, "시간")
-            MetricItem(paceLabel, "평균 페이스")
-        }
-        Spacer(Modifier.weight(1f))
-        if (running) {
-            Button(
-                onClick = { running = false },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = RunWhite, contentColor = RunBlack)
-            ) { Text("일시정지", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-        } else {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    onClick = { running = true },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RunBlack, contentColor = RunWhite)
-                ) { Text("계속하기", fontWeight = FontWeight.Bold) }
-                OutlinedButton(
-                    onClick = { onFinish(distance, elapsedSeconds) },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)
-                ) { Text("러닝 종료", fontWeight = FontWeight.Bold) }
+
+        // Figma "24 Run / Paused": 어둡게 딤 처리 + 안내 문구 + 하단 액션 시트
+        if (!running) {
+            Box(modifier = Modifier.fillMaxSize().background(RunBlack.copy(alpha = 0.4f)).clickable(enabled = false) {})
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "러닝을 일시 정지했습니다.", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RunWhite,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "계속 달리거나 종료할 수 있어요.", fontSize = 13.sp, color = RunWhite.copy(alpha = 0.85f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp))
+                    .background(RunWhite).padding(horizontal = 16.dp, vertical = 24.dp)
+            ) {
+                Box(
+                    modifier = Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(2.dp))
+                        .background(RunBorderGray).align(Alignment.CenterHorizontally)
+                )
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "현재 기록은 그대로 유지돼요", fontSize = 12.sp, color = RunGray,
+                    modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(
+                        modifier = Modifier.weight(0.45f).height(56.dp).clip(RoundedCornerShape(28.dp))
+                            .background(RunBgGray).clickable { onFinish(distance, elapsedSeconds) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("■  종료하기", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    }
+                    Box(
+                        modifier = Modifier.weight(0.55f).height(56.dp).clip(RoundedCornerShape(28.dp))
+                            .background(RunLime).clickable { running = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("▶  계속 달리기", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    }
+                }
             }
         }
-        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun UtilityPill(label: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.height(34.dp).clip(RoundedCornerShape(17.dp))
+            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(17.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+    }
+}
+
+@Composable
+private fun RunStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 11.sp, color = RunGray)
     }
 }
 
@@ -316,55 +421,82 @@ fun CompleteScreen(
         "%02d:%02d".format(m, s)
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(RunCream).verticalScroll(rememberScrollState()).padding(24.dp)
-    ) {
-        Text("RUN COMPLETE", fontSize = 24.sp, fontWeight = FontWeight.Black, color = RunBlack)
-        Text("${course.name} 완료!", fontSize = 13.sp, color = RunGray)
-        Spacer(Modifier.height(16.dp))
-        CourseMapCard(course = course)
-        Spacer(Modifier.height(20.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            MetricItem(String.format("%.2f km", distanceKm), "거리")
-            MetricItem(durationLabel, "시간")
-            MetricItem(paceLabel, "평균 페이스")
-        }
-        Spacer(Modifier.height(28.dp))
-        Text("다음은 어디로 갈까요?", fontSize = 17.sp, fontWeight = FontWeight.Black, color = RunBlack)
-        Spacer(Modifier.height(12.dp))
-        if (hub == null) {
-            Text("이 코스는 아직 Finish Hub가 지정되지 않았어요.", fontSize = 13.sp, color = RunGray)
-        } else {
-            NextStepRow("EAT", "러닝 후 든든하게 · ${hub.name} Finish Hub") { onCategoryClick(PlaceCategory.EAT) }
-            Spacer(Modifier.height(10.dp))
-            val cafePick = RunQData.places.firstOrNull { it.finishHubId == hub.id && it.category == PlaceCategory.CAFE }
-            NextStepRow("CAFE", cafePick?.let { "${it.title} 등에서 잠깐 쉬기" } ?: "카페에서 잠깐 쉬기") { onCategoryClick(PlaceCategory.CAFE) }
-            Spacer(Modifier.height(10.dp))
-            NextStepRow("SEE", "${hub.name} 주변을 천천히 둘러보기") { onCategoryClick(PlaceCategory.SEE) }
-        }
-        Spacer(Modifier.height(12.dp))
-    }
-}
+    // 체중 등 개인 프로필이 없어 정확한 칼로리 계산은 불가 — km당 65kcal 통상치로 대략치만 표시.
+    val caloriesEstimate = remember(distanceKm) { (distanceKm * 65).toInt() }
 
-@Composable
-fun NextStepRow(label: String, desc: String, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = RunWhite)
+    Column(
+        modifier = Modifier.fillMaxSize().background(RunCream).verticalScroll(rememberScrollState()).padding(20.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Spacer(Modifier.height(16.dp))
+        Text("RUN COMPLETE", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = RunGray)
+        Spacer(Modifier.height(6.dp))
+        Text("러닝 완료!", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+        Spacer(Modifier.height(6.dp))
+        Text(course.name, fontSize = 13.sp, color = RunGray)
+        Spacer(Modifier.height(16.dp))
+
+        Box(modifier = Modifier.fillMaxWidth().height(210.dp)) {
+            CourseMapCard(course = course, heightDp = 210)
+            Box(
+                modifier = Modifier.align(Alignment.TopEnd).padding(14.dp)
+                    .clip(RoundedCornerShape(15.dp)).background(RunBlack).padding(horizontal = 14.dp, vertical = 7.dp)
+            ) {
+                Text("✓ COMPLETE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunWhite)
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+
+        Box(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(24.dp)).padding(18.dp)
         ) {
             Column {
-                Text(label, fontSize = 15.sp, fontWeight = FontWeight.Black, color = RunBlack)
-                Spacer(Modifier.height(2.dp))
-                Text(desc, fontSize = 12.sp, color = RunGray)
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    CourseInfoLine("거리", String.format("%.2f KM", distanceKm), Modifier.weight(1f))
+                    CourseInfoLine("운동 시간", durationLabel, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(16.dp))
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(RunBorderGray))
+                Spacer(Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    CourseInfoLine("평균 페이스", "$paceLabel /KM", Modifier.weight(1f))
+                    CourseInfoLine("소모 칼로리", "$caloriesEstimate KCAL", Modifier.weight(1f))
+                }
             }
-            Icon(Icons.Filled.ChevronRight, null, tint = RunGray, modifier = Modifier.size(18.dp))
         }
+        Spacer(Modifier.height(20.dp))
+
+        Box(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
+                .background(Color(0xFFF6F1E0)).padding(18.dp)
+        ) {
+            Column {
+                Box(modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(RunWhite).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Text("FINISH HUB", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                }
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "잘 달렸어요.\n이제 근처에서 쉬어갈까요?",
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RunBlack, lineHeight = 28.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                if (hub == null) {
+                    Text("이 코스는 아직 Finish Hub가 지정되지 않았어요.", fontSize = 12.sp, color = RunGray)
+                } else {
+                    Text("맛집 · 카페 · 볼거리를 바로 둘러보세요.", fontSize = 11.sp, color = Color(0xFF827D75))
+                    Spacer(Modifier.height(6.dp))
+                    Text("EAT   ·   CAFE   ·   SEE", fontSize = 10.sp, fontWeight = FontWeight.Medium, color = Color(0xFF616157))
+                    Spacer(Modifier.height(14.dp))
+                    Button(
+                        onClick = { onCategoryClick(PlaceCategory.EAT) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
+                    ) { Text("📍  Finish Hub 둘러보기", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
 

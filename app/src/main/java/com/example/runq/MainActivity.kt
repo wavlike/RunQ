@@ -1063,7 +1063,7 @@ fun CourseInfoCard(course: Course) {
 }
 
 @Composable
-private fun CourseInfoLine(label: String, value: String, modifier: Modifier = Modifier) {
+fun CourseInfoLine(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(label, fontSize = 9.sp, color = Color(0xFF7B746A))
         Spacer(Modifier.height(4.dp))
