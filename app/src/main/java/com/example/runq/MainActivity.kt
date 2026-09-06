@@ -3,15 +3,9 @@ package com.example.runq
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
-import androidx.compose.ui.graphics.vector.ImageVector
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -66,30 +60,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.IconButton
-import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.FilterList
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.Menu
@@ -129,8 +107,7 @@ class MainActivity : ComponentActivity() {
 // ════════════════════════════════════════════════════════
 sealed class AppState {
     object Splash : AppState()
-    object Landing : AppState()
-    object Login : AppState()    // 추가
+    object Auth : AppState()
     object Main : AppState()
 }
 
@@ -140,158 +117,22 @@ fun RunQApp() {
 
     Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
         when (app) {
-            AppState.Splash -> SplashScreen(onDone = { app = AppState.Landing })
-            AppState.Landing -> LandingScreen(
-                onLoginClick = { app = AppState.Login },
-                onJoinUsClick = { /* 회원가입 이동 로직 */ }
-            )
-            AppState.Login -> LoginScreen(onLoginSuccess = { app = AppState.Main })
-            AppState.Main -> MainWithTabs()
+            AppState.Splash -> SplashScreen(onDone = { app = AppState.Auth })
+            AppState.Auth -> AuthFlow(onAuthSuccess = { app = AppState.Main })
+            AppState.Main -> MainWithTabs(onLogout = { app = AppState.Auth })
         }
-    }
-}
-
-@Composable
-fun LoginScreen(onLoginSuccess: () -> Unit) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(RunWhite)
-            .padding(32.dp)
-    ) {
-        // 상단 뒤로가기 버튼 스타일
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(RunBgGray)
-                .clickable { /* 뒤로가기 로직 필요시 추가 */ },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = RunBlack, modifier = Modifier.size(20.dp))
-        }
-
-        Spacer(Modifier.height(40.dp))
-
-        // 피그마 타이틀 스타일
-        Text(
-            text = "Welcome\nrunners !",
-            fontSize = 40.sp,
-            fontWeight = FontWeight.Black,
-            lineHeight = 48.sp,
-            color = RunBlack
-        )
-
-        Spacer(Modifier.height(48.dp))
-
-        // 입력 필드: Username
-        LoginTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = "Username",
-            icon = Icons.Default.Person
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        // 입력 필드: Password
-        LoginTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = "Password",
-            icon = Icons.Default.Lock,
-            isPassword = true
-        )
-
-        Spacer(Modifier.height(40.dp))
-
-        // Log In 버튼 (피그마 라임 버튼)
-        Button(
-            onClick = onLoginSuccess,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
-        ) {
-            Text("Log In", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        }
-
-        Spacer(Modifier.weight(1f))
-
-        // 소셜 로그인 섹션
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            Text("sign up with", fontSize = 13.sp, color = RunGray)
-            Spacer(Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SocialIcon(Icons.Default.Translate) // 구글/번역 대용
-                Spacer(Modifier.width(24.dp))
-                SocialIcon(Icons.Default.AccountCircle) // 애플/계정 대용
-                Spacer(Modifier.width(24.dp))
-                SocialIcon(Icons.Default.Face) // 페이스북/얼굴 대용
-            }
-        }
-        Spacer(Modifier.height(20.dp))
-    }
-}
-
-@Composable
-fun LoginTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    icon: ImageVector,
-    isPassword: Boolean = false
-) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = RunGray, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(label, color = RunGray, fontSize = 14.sp)
-        }
-        TextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedIndicatorColor = RunBlack,
-                unfocusedIndicatorColor = RunBgGray
-            ),
-            singleLine = true
-        )
-    }
-}
-
-@Composable
-fun SocialIcon(icon: ImageVector) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .border(1.dp, RunBgGray, RoundedCornerShape(24.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
     }
 }
 
 // ════════════════════════════════════════════════════════
-// 하단 탭바 (Home / Course / Run / Place) — Figma "Bottom Nav · Gradient Glow" 기준
+// 하단 탭바 (Home / Course / Run / Place / My) — Figma "Bottom Nav · Gradient Glow" 기준
 // ════════════════════════════════════════════════════════
 enum class Tab(val label: String) {
-    HOME("Home"), COURSE("Course"), RUN("Run"), PLACE("Place")
+    HOME("Home"), COURSE("Course"), RUN("Run"), PLACE("Place"), MY("MY")
 }
 
 @Composable
-fun MainWithTabs() {
+fun MainWithTabs(onLogout: () -> Unit) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     // Course 탭 안에서 Run Ready/Running/Complete·Finish Hub로 넘어가면 실제 화면 성격에
     // 맞춰 하단 탭 강조를 Run/Place로 넘겨준다 (디자인상 해당 화면들은 Run/Place가 켜져 있음).
@@ -303,10 +144,11 @@ fun MainWithTabs() {
         // 화면 영역
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when (tab) {
-                Tab.HOME -> HomeScreen(onFindCourses = { tab = Tab.COURSE })
+                Tab.HOME -> HomeFlow(onFindCourses = { tab = Tab.COURSE })
                 Tab.COURSE -> CourseFlow(onSectionHint = { courseSectionTab = it })
                 Tab.RUN -> RunningScreen()
                 Tab.PLACE -> PlaceFlow()
+                Tab.MY -> MyFlow(onLogout = onLogout)
             }
         }
         BottomNavBar(selected = highlightedTab, onSelect = { tab = it })
@@ -321,7 +163,7 @@ fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            Tab.values().forEach { t -> NavTabItem(t, t == selected) { onSelect(t) } }
+            Tab.entries.forEach { t -> NavTabItem(t, t == selected) { onSelect(t) } }
         }
     }
 }
@@ -333,6 +175,7 @@ fun NavTabItem(tab: Tab, selected: Boolean, onClick: () -> Unit) {
         Tab.COURSE -> if (selected) Icons.Filled.Route else Icons.Outlined.Route
         Tab.RUN -> if (selected) Icons.Filled.DirectionsRun else Icons.Outlined.DirectionsRun
         Tab.PLACE -> if (selected) Icons.Filled.Place else Icons.Outlined.Place
+        Tab.MY -> if (selected) Icons.Filled.Person else Icons.Outlined.Person
     }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -503,7 +346,7 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> U
         Spacer(Modifier.height(12.dp))
 
         if (displayedCourses.isEmpty()) {
-            Text("조건에 맞는 코스가 없어요.", color = RunGray, modifier = Modifier.padding(top = 24.dp))
+            EmptyStateView("🔍", "조건에 맞는 코스가 없어요", "필터를 바꿔서 다시 찾아보세요.", Modifier.padding(top = 24.dp))
         } else {
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(displayedCourses) { index, course ->
@@ -676,96 +519,6 @@ fun SplashScreen(onDone: () -> Unit) {
     }
 }
 
-@Composable
-fun LandingScreen(onLoginClick: () -> Unit, onJoinUsClick: () -> Unit) {
-    var showButtons by remember { mutableStateOf(false) }
-    var isExiting by remember { mutableStateOf(false) }
-    val scale = remember { Animatable(0.5f) }
-    val alpha = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        launch { alpha.animateTo(1f, animationSpec = tween(1200)) }
-        scale.animateTo(1.3f, animationSpec = tween(1200, easing = FastOutSlowInEasing))
-        delay(400)
-        scale.animateTo(1.0f, animationSpec = tween(600))
-        delay(500)
-        showButtons = true
-    }
-
-    val handleExit = { nextAction: () -> Unit ->
-        isExiting = true
-        scope.launch {
-            scale.animateTo(1.5f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
-            launch { alpha.animateTo(0f, animationSpec = tween(400)) }
-            scale.animateTo(0f, animationSpec = tween(400))
-            nextAction()
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
-        if (!isExiting) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.runq_logo),
-                    contentDescription = "RunQ 로고",
-                    modifier = Modifier
-                        .size(240.dp)
-                        .graphicsLayer(
-                            scaleX = scale.value,
-                            scaleY = scale.value,
-                            alpha = alpha.value
-                        )
-                )
-                
-                if (!showButtons) {
-                    Spacer(Modifier.height(24.dp))
-                    Text(
-                        "Your Run, Curated", 
-                        color = RunBlack,
-                        fontSize = 18.sp, 
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.graphicsLayer(alpha = alpha.value)
-                    )
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = showButtons && !isExiting,
-            enter = fadeIn(tween(800)) + slideInVertically(initialOffsetY = { it / 2 }),
-            exit = fadeOut(tween(400)),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)
-        ) {
-            Column {
-                Button(
-                    onClick = { handleExit(onJoinUsClick) },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
-                ) {
-                    Text("Join Us", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = { handleExit(onLoginClick) },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.5.dp, RunLime),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = RunLime)
-                ) {
-                    Text("Log In", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(20.dp))
-            }
-        }
-    }
-}
-
 // ══════════════════════════════════════════════════
 // 코스: 조건 선택
 // ══════════════════════════════════════════════════
@@ -836,7 +589,7 @@ fun ResultScreen(courses: List<Course>, onCourseClick: (Course) -> Unit, onBack:
         Text("${courses.size}개의 코스를 찾았어요", fontSize = 14.sp, color = RunGray)
         Spacer(Modifier.height(20.dp))
         if (courses.isEmpty()) {
-            Text("조건에 맞는 코스가 없어요. 조건을 바꿔보세요.", color = RunGray)
+            EmptyStateView("🔍", "조건에 맞는 코스가 없어요", "조건을 바꿔보세요.", Modifier.padding(top = 24.dp))
         } else {
             LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 items(courses) { course -> CourseCard(course) { onCourseClick(course) } }
@@ -917,7 +670,7 @@ fun DetailScreen(
     onOpenCategory: (PlaceCategory) -> Unit
 ) {
     var safety by remember { mutableStateOf<SafetyInfo?>(null) }
-    var saved by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(SavedItemsStore.isCourseSaved(course.id)) }
     val hub = remember(course) { course.finishHubIds.firstOrNull()?.let { findHub(it) } }
 
     LaunchedEffect(course.name) {
@@ -1019,7 +772,7 @@ fun DetailScreen(
             Text("이 코스로 달리기", fontWeight = FontWeight.Black, fontSize = 16.sp)
         }
         Spacer(Modifier.height(10.dp))
-        OutlinedButton(onClick = { saved = !saved }, modifier = Modifier.fillMaxWidth().height(52.dp),
+        OutlinedButton(onClick = { SavedItemsStore.toggleCourse(course.id); saved = !saved }, modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(28.dp),
             border = BorderStroke(1.5.dp, RunBlack),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)) {

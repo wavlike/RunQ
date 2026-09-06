@@ -426,6 +426,20 @@ fun CompleteScreen(
     // 체중 등 개인 프로필이 없어 정확한 칼로리 계산은 불가 — km당 65kcal 통상치로 대략치만 표시.
     val caloriesEstimate = remember(distanceKm) { (distanceKm * 65).toInt() }
 
+    // 완주 화면에 처음 진입했을 때 딱 한 번만 기록을 저장한다(재구성/회전 시 중복 저장 방지).
+    LaunchedEffect(course.id, distanceKm, elapsedSeconds) {
+        RunHistoryStore.add(
+            RunRecord(
+                id = java.util.UUID.randomUUID().toString(),
+                courseId = course.id,
+                courseName = course.name,
+                timestampMillis = System.currentTimeMillis(),
+                distanceKm = distanceKm,
+                elapsedSeconds = elapsedSeconds
+            )
+        )
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().background(RunCream).verticalScroll(rememberScrollState()).padding(20.dp)
     ) {
@@ -638,7 +652,7 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
             }
             Spacer(Modifier.height(14.dp))
             if (places.isEmpty()) {
-                Text("아직 등록된 장소가 없어요.", fontSize = 13.sp, color = RunGray, modifier = Modifier.padding(top = 20.dp))
+                EmptyStateView("📍", "아직 등록된 장소가 없어요", "다른 Hub나 카테고리를 확인해보세요.", Modifier.padding(top = 20.dp))
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(places) { place ->
@@ -710,7 +724,14 @@ private fun PlaceListCard(place: FinishHubPlace, onClick: () -> Unit) {
                     fontSize = 11.sp, color = RunGray
                 )
             }
-            Text("♡", fontSize = 18.sp, color = RunGray)
+            val placeId = place.id
+            if (placeId != null) {
+                var isSaved by remember(placeId) { mutableStateOf(SavedItemsStore.isPlaceSaved(placeId)) }
+                Text(
+                    if (isSaved) "♥" else "♡", fontSize = 18.sp, color = if (isSaved) RunPurple else RunGray,
+                    modifier = Modifier.clickable { SavedItemsStore.togglePlace(placeId); isSaved = !isSaved }
+                )
+            }
         }
     }
 }
@@ -750,10 +771,12 @@ fun HubPlacesScreen(
 ) {
     var result by remember { mutableStateOf<FinishHubResult?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
+    var retryTick by remember { mutableStateOf(0) }
     var tab by remember { mutableStateOf(initialCategory) }
 
-    LaunchedEffect(hub?.id) {
+    LaunchedEffect(hub?.id, retryTick) {
         if (hub != null) {
+            result = null
             result = runCatching { fetchFinishHubPlaces(hub) }.getOrNull()
             loadFailed = result == null
         }
@@ -794,12 +817,13 @@ fun HubPlacesScreen(
             PlaceCategory.SEE -> result?.see
         }
         when {
-            hub == null -> Text("Finish Hub 정보가 없어요.", color = RunGray)
-            loadFailed -> Text("추천 정보를 불러오지 못했어요. (네트워크 확인)", color = RunGray)
-            list == null -> Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = RunPurple)
-            }
-            list.isEmpty() -> Text("추천 장소를 찾지 못했어요.", color = RunGray)
+            hub == null -> EmptyStateView("📍", "Finish Hub 정보가 없어요", "이 코스는 아직 Finish Hub가 연결되지 않았어요.", Modifier.padding(top = 30.dp))
+            loadFailed -> ErrorStateView(
+                "추천 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
+                onRetry = { retryTick++ }, modifier = Modifier.padding(top = 30.dp)
+            )
+            list == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
+            list.isEmpty() -> EmptyStateView("🔍", "추천 장소를 찾지 못했어요", "다른 카테고리를 확인해보세요.", Modifier.padding(top = 30.dp))
             else -> {
                 Text("${list.size} PLACES", fontSize = 11.sp, color = RunGray)
                 Spacer(Modifier.height(12.dp))
