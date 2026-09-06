@@ -113,7 +113,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { RunQApp() } }
+        // Foundations(Figma)가 지정한 서체는 Noto Sans KR — 색상은 화면마다 RunQTheme.kt의
+        // 값을 직접 지정해 쓰는 기존 방식을 유지하고, 여기선 전역 타이포그래피만 맞춘다.
+        setContent { MaterialTheme(typography = com.example.runq.ui.theme.Typography) { RunQApp() } }
     }
 }
 
