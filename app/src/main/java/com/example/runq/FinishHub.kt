@@ -60,6 +60,15 @@ fun Course.locationLabel(): String = location?.takeIf { it.isNotBlank() } ?: reg
 fun Course.reasonText(): String = headline?.takeIf { it.isNotBlank() }
     ?: "완주 후 이어지는 EAT · CAFE · SEE까지 묶어서 준비한 RunQ 코스예요."
 
+// 코스별 기상청 격자(nx, ny). 엑셀에 값이 있으면 그대로 쓰고, 없으면 시작/종료 좌표로
+// 즉석 계산한다(계산값을 콘텐츠 JSON에 되써넣지는 않음 — 화면 표시용 파생값일 뿐).
+fun Course.weatherGrid(): Pair<Int, Int>? {
+    if (weatherNx != null && weatherNy != null) return weatherNx to weatherNy
+    val lat = startLat ?: finishLat ?: return null
+    val lng = startLng ?: finishLng ?: return null
+    return latLngToWeatherGrid(lat, lng)
+}
+
 // 코스 거리 구간 매칭 (Course List/조건추천 화면의 필터 버튼용)
 fun Course.matchesDistanceBucket(bucket: String): Boolean {
     val km = distanceKm ?: return false

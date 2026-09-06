@@ -101,11 +101,13 @@ private fun baseDateTime(): Pair<String, String> {
     return date to time
 }
 
-// 날씨 + 미세먼지를 한 번에 불러와 가공
-suspend fun fetchSafety(): SafetyInfo {
+// 날씨 + 미세먼지를 한 번에 불러와 가공.
+// nx/ny를 넘기면 강릉 시내 고정 격자 대신 해당 좌표(코스 위치)의 격자로 조회한다.
+suspend fun fetchSafety(grid: Pair<Int, Int>? = null): SafetyInfo {
     // 날씨
     val (d, t) = baseDateTime()
-    val w = WeatherClient.api.getNowWeather(baseDate = d, baseTime = t)
+    val w = (if (grid != null) WeatherClient.api.getNowWeather(baseDate = d, baseTime = t, nx = grid.first, ny = grid.second)
+             else WeatherClient.api.getNowWeather(baseDate = d, baseTime = t))
         .response.body?.items?.item ?: emptyList()
     val temp = w.firstOrNull { it.category == "T1H" }?.obsrValue ?: "-"
     val rn1 = w.firstOrNull { it.category == "RN1" }?.obsrValue ?: "0"

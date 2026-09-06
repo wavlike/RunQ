@@ -70,6 +70,15 @@ private fun curatedPlaces(hub: FinishHub, category: PlaceCategory): List<FinishH
         .filter { it.finishHubId == hub.id && it.category == category && it.status != ContentStatus.HIDDEN }
         .sortedBy { it.displayOrder }
 
+// distance_from_hub_m이 아직 비어있어도 장소/Hub 둘 다 좌표가 있으면 화면 표시용으로
+// 즉석 계산한다(콘텐츠 JSON에는 쓰지 않음 — 계산값과 팀이 확정한 값을 구분해서 다룬다).
+fun FinishHubPlace.distanceLabel(hub: FinishHub?): String? {
+    distMeters?.toDoubleOrNull()?.let { return "${it.toInt()}m" }
+    val plat = lat; val plng = lng
+    if (hub == null || plat == null || plng == null) return null
+    return "${haversineMeters(hub.resolvedLat, hub.resolvedLng, plat, plng).toInt()}m"
+}
+
 private fun mergeCurated(curated: List<FinishHubPlace>, apiResults: List<FinishHubPlace>): List<FinishHubPlace> {
     val curatedTitles = curated.map { it.title }
     val rest = apiResults.filter { api -> curatedTitles.none { it.contains(api.title) || api.title.contains(it) } }
@@ -151,7 +160,7 @@ fun CourseMapCard(
 fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
     var safety by remember { mutableStateOf<SafetyInfo?>(null) }
     LaunchedEffect(course.name) {
-        safety = runCatching { fetchSafety() }.getOrNull()
+        safety = runCatching { fetchSafety(course.weatherGrid()) }.getOrNull()
     }
 
     Column(
@@ -378,6 +387,7 @@ fun PlaceFlow() {
         is PlaceStep.Detail -> PlaceDetailScreen(
             place = s.place,
             hubName = s.hub.name,
+            hub = s.hub,
             onBack = { step = PlaceStep.HubList(s.hub, s.place.category) }
         )
     }
@@ -581,7 +591,7 @@ fun PlacePhotoPlaceholder(accent: Color, heightDp: Int) {
 // Place Detail: "35 Places/Detail.png" — contentId가 있으면 detailCommon2로 상세조회
 // ════════════════════════════════════════════════════════
 @Composable
-fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, onBack: () -> Unit) {
+fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: FinishHub? = null, onBack: () -> Unit) {
     var detail by remember { mutableStateOf<DetailCommonItem?>(null) }
     var loading by remember { mutableStateOf(place.contentId != null) }
 
@@ -617,7 +627,7 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, onBack: ()
         Text(place.title, fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Spacer(Modifier.height(4.dp))
         Text(
-            listOfNotNull(hubName, place.distMeters?.let { "Finish Hub에서 ${it}m" }).joinToString(" · ")
+            listOfNotNull(hubName, place.distanceLabel(hub)?.let { "Finish Hub에서 $it" }).joinToString(" · ")
                 .ifBlank { place.category.label },
             fontSize = 13.sp, color = RunGray
         )

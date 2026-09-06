@@ -40,8 +40,8 @@ fun HomeScreen(onFindCourses: () -> Unit) {
     var searchText by remember { mutableStateOf("") }
     val featured = remember { RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.maxByOrNull { it.rating } }
 
-    LaunchedEffect(Unit) {
-        try { safety = fetchSafety() } catch (e: Exception) { }
+    LaunchedEffect(featured?.id) {
+        try { safety = fetchSafety(featured?.weatherGrid()) } catch (e: Exception) { }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream)) {
@@ -180,48 +180,92 @@ fun RunningScreen() {
     val context = LocalContext.current
     var isRunning by remember { mutableStateOf(false) }
     var distance by remember { mutableStateOf(0.0) }
+    var elapsedSeconds by remember { mutableStateOf(0) }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
-    // 경포호 기본 위치 — 코스 선택 없이 자유러닝을 시작했을 때의 기본 지도 중심.
+    var hasFix by remember { mutableStateOf(false) }
+    // 경포호 기본 위치 — 첫 GPS 픽스를 받기 전까지의 기본 지도 중심.
     var currentLocation by remember { mutableStateOf(RoutePoint(37.7946, 128.9022)) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         hasLocationPermission = isGranted
     }
 
-    // 코스 선택 없는 자유러닝이라 실시간 트래킹 대신 최근 위치를 한 번 가져와 지도 중심만 맞춘다.
-    // (연속 위치 추적은 실제 GPS 기록 기능 붙일 때 FusedLocationProviderClient로 교체)
-    LaunchedEffect(hasLocationPermission) {
+    // 권한이 없으면 화면 진입 시 바로 요청 — 예전에는 버튼을 눌러야만 요청돼서
+    // "GPS가 안 잡힌다"는 착시가 생겼다.
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    // 실시간 위치 갱신 — LocationManager.requestLocationUpdates로 지속 추적하고,
+    // 러닝 중일 때만 이동 거리를 haversine으로 누적한다.
+    DisposableEffect(hasLocationPermission) {
+        var listener: android.location.LocationListener? = null
+        var lm: android.location.LocationManager? = null
         if (hasLocationPermission) {
             runCatching {
-                val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val providers = lm.getProviders(true)
-                val last = providers.mapNotNull { lm.getLastKnownLocation(it) }
-                    .maxByOrNull { it.time }
-                last?.let { currentLocation = RoutePoint(it.latitude, it.longitude) }
+                val manager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                lm = manager
+                manager.getProviders(true).mapNotNull { manager.getLastKnownLocation(it) }
+                    .maxByOrNull { it.time }?.let {
+                        currentLocation = RoutePoint(it.latitude, it.longitude)
+                        hasFix = true
+                    }
+                val provider = when {
+                    manager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) -> android.location.LocationManager.GPS_PROVIDER
+                    manager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) -> android.location.LocationManager.NETWORK_PROVIDER
+                    else -> null
+                }
+                if (provider != null) {
+                    val l = android.location.LocationListener { loc ->
+                        if (isRunning) {
+                            distance += haversineMeters(currentLocation.lat, currentLocation.lng, loc.latitude, loc.longitude) / 1000.0
+                        }
+                        currentLocation = RoutePoint(loc.latitude, loc.longitude)
+                        hasFix = true
+                    }
+                    listener = l
+                    manager.requestLocationUpdates(provider, 2000L, 3f, l)
+                }
             }
+        }
+        onDispose {
+            listener?.let { l -> runCatching { lm?.removeUpdates(l) } }
         }
     }
 
-    // 시뮬레이션용 시간/거리 업데이트
+    // 경과 시간 — 실제 이동 거리(distance)는 위 위치 리스너에서 갱신.
     LaunchedEffect(isRunning) {
-        while(isRunning) {
+        while (isRunning) {
             kotlinx.coroutines.delay(1000)
-            distance += 0.01 // 초당 10미터씩 증가 (가짜 데이터)
+            elapsedSeconds += 1
         }
+    }
+
+    val paceLabel = remember(distance, elapsedSeconds) {
+        if (distance < 0.01) "0'00\"" else {
+            val paceSec = (elapsedSeconds / distance).toInt()
+            "${paceSec / 60}'${(paceSec % 60).toString().padStart(2, '0')}\""
+        }
+    }
+    val durationLabel = remember(elapsedSeconds) {
+        val m = elapsedSeconds / 60; val s = elapsedSeconds % 60
+        "%02d:%02d".format(m, s)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
-        // 지도 영역
+        // 지도 영역 — start/finish 없이 currentLocation만 넘겨서 위치가 갱신될 때마다
+        // 라벨만 이동시킨다(예전엔 currentLocation을 start/finish로도 같이 넘겨서 매번
+        // 지도 전체를 다시 그리는 바람에 위치 라벨이 사라지고 다시 안 잡히는 버그가 있었음).
         if (hasLocationPermission) {
             KakaoRouteMap(
                 modifier = Modifier.fillMaxSize(),
                 routePoints = emptyList(),
-                startPoint = currentLocation,
-                finishPoint = currentLocation,
+                startPoint = null,
+                finishPoint = null,
                 currentLocation = currentLocation
             )
         } else {
@@ -241,9 +285,9 @@ fun RunningScreen() {
                     Text("32°C", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.GpsFixed, null, tint = if(hasLocationPermission) RunPurple else RunGray, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.GpsFixed, null, tint = if(hasFix) RunPurple else RunGray, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("GPS", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(if (hasFix) "GPS" else "GPS 찾는 중", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
             }
 
@@ -257,8 +301,8 @@ fun RunningScreen() {
             Spacer(Modifier.height(40.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MetricItem("0'00\"", "Avg Pace")
-                MetricItem("00.00", "Duration")
+                MetricItem(paceLabel, "Avg Pace")
+                MetricItem(durationLabel, "Duration")
                 MetricItem("0 kcal", "Calories")
             }
 
@@ -270,11 +314,10 @@ fun RunningScreen() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    modifier = Modifier.size(64.dp).clickable { 
+                    // 카메라는 위치가 갱신될 때마다 자동으로 현재 위치를 따라가므로,
+                    // 권한이 없을 때만 재요청하면 된다.
+                    modifier = Modifier.size(64.dp).clickable {
                         if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                        else { 
-                            // 현재 위치로 카메라 이동 (실제 GPS 연동 시 필요)
-                        }
                     },
                     shape = RoundedCornerShape(32.dp),
                     color = RunWhite,
@@ -295,7 +338,7 @@ fun RunningScreen() {
                 }
 
                 Surface(
-                    modifier = Modifier.size(64.dp).clickable { distance = 0.0; isRunning = false },
+                    modifier = Modifier.size(64.dp).clickable { distance = 0.0; elapsedSeconds = 0; isRunning = false },
                     shape = RoundedCornerShape(32.dp),
                     color = RunWhite,
                     shadowElevation = 6.dp

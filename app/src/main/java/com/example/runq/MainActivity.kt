@@ -424,10 +424,15 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
                 onPlaceClick = { place -> step = CourseStep.PlaceDetailStep(s.course, place) }
             )
         }
-        is CourseStep.PlaceDetailStep -> PlaceDetailScreen(
-            place = s.place,
-            onBack = { step = CourseStep.FinishHubStep(s.course) }
-        )
+        is CourseStep.PlaceDetailStep -> {
+            val hub = s.course.finishHubIds.firstOrNull()?.let { findHub(it) }
+            PlaceDetailScreen(
+                place = s.place,
+                hubName = hub?.name,
+                hub = hub,
+                onBack = { step = CourseStep.FinishHubStep(s.course) }
+            )
+        }
     }
 }
 
@@ -824,7 +829,7 @@ fun DetailScreen(
     val hub = remember(course) { course.finishHubIds.firstOrNull()?.let { findHub(it) } }
 
     LaunchedEffect(course.name) {
-        try { safety = fetchSafety() }
+        try { safety = fetchSafety(course.weatherGrid()) }
         catch (e: Exception) { safety = null }
     }
 
