@@ -15,3 +15,4 @@ val RunGray = Color(0xFF8A8A8A)      // 보조 텍스트 (Foundations 미지정,
 val RunCream = Color(0xFFF7F5EE)     // Cream Ivory — 화면 배경
 val RunBgGray = Color(0xFFEFEDE4)    // Cream 위에 얹는 보조 카드 배경(Card White와 구분용)
 val RunWhite = Color(0xFFFFFFFF)     // Card White
+val RunBorderGray = Color(0xFFE8E6E0) // Figma에서 반복 등장하는 옅은 카드/필드 테두리색 (Foundations 미지정, 실측값)

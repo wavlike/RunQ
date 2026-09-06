@@ -1,6 +1,7 @@
 package com.example.runq
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -128,11 +130,13 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
 fun CourseMapCard(
     course: Course,
     title: String? = null,
+    eyebrow: String = "ROUTE MAP",
     heightDp: Int = 260,
     currentLocation: RoutePoint? = null
 ) {
     Box(
         modifier = Modifier.fillMaxWidth().height(heightDp.dp).clip(RoundedCornerShape(24.dp))
+            .border(1.dp, RunBorderGray, RoundedCornerShape(24.dp))
     ) {
         KakaoRouteMap(
             modifier = Modifier.fillMaxSize(),
@@ -142,12 +146,15 @@ fun CourseMapCard(
             currentLocation = currentLocation
         )
         if (title != null) {
+            // Figma "Route Section": 지도 위쪽에 흰색→투명 그라데이션 밴드 + eyebrow/타이틀 스택
             Box(
-                modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
-                    .clip(RoundedCornerShape(10.dp)).background(RunWhite.copy(alpha = 0.9f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                modifier = Modifier.align(Alignment.TopStart).fillMaxWidth().height(72.dp)
+                    .background(Brush.verticalGradient(listOf(RunWhite.copy(alpha = 0.95f), Color.Transparent)))
+            )
+            Column(modifier = Modifier.align(Alignment.TopStart).padding(top = 14.dp, start = 16.dp)) {
+                Text(eyebrow, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = RunGray)
+                Spacer(Modifier.height(4.dp))
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
             }
         }
     }

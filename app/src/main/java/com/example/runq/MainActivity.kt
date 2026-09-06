@@ -34,8 +34,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
@@ -438,43 +443,52 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
     }
 }
 
-// "20 Course/List.png" 기준: 헤더 + 거리 필터칩 + 화살표 리스트 카드
+// Figma "20 Course / List" 기준: 헤더 + 지역/거리/난이도 드롭다운 필터 + 에디토리얼 리스트 카드
+private val distanceBucketOptions = listOf("전체", "짧은코스", "5K", "중거리", "10K", "장거리")
+
 @Composable
 fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> Unit) {
+    var regionFilter by remember { mutableStateOf("전체 지역") }
     var distanceFilter by remember { mutableStateOf("전체") }
+    var difficultyFilter by remember { mutableStateOf("전체") }
+    val regionOptions = remember {
+        listOf("전체 지역") + RunQData.courses.map { it.region }.distinct().sorted()
+    }
 
-    val displayedCourses = remember(distanceFilter) {
+    val displayedCourses = remember(regionFilter, distanceFilter, difficultyFilter) {
         RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.filter { c ->
-            distanceFilter == "전체" || c.matchesDistanceBucket(distanceFilter)
+            (regionFilter == "전체 지역" || c.region == regionFilter) &&
+                (distanceFilter == "전체" || c.matchesDistanceBucket(distanceFilter)) &&
+                (difficultyFilter == "전체" || c.difficulty.label == difficultyFilter)
         }.sortedByDescending { it.rating }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream).padding(24.dp)) {
         Spacer(Modifier.height(16.dp))
-        Text("러닝 코스", fontSize = 26.sp, fontWeight = FontWeight.Black, color = RunBlack)
-        Text("거리와 분위기로 찾아보세요", fontSize = 14.sp, color = RunGray)
+        Text("모든 코스 보기", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+        Spacer(Modifier.height(8.dp))
+        Text("거리와 분위기로 내 러닝 코스를 골라보세요.", fontSize = 13.sp, color = RunGray)
 
         Spacer(Modifier.height(20.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("전체", "3km", "5km", "10km+").forEach { label ->
-                val selected = distanceFilter == label
-                Box(
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
-                        .background(if (selected) RunPurple else RunBgGray)
-                        .clickable { distanceFilter = label }
-                        .padding(horizontal = 16.dp, vertical = 9.dp)
-                ) {
-                    Text(
-                        label, fontSize = 13.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (selected) RunWhite else RunBlack
-                    )
-                }
-            }
+            FilterDropdownChip("$regionFilter ▾", regionOptions) { regionFilter = it }
+            FilterDropdownChip(if (distanceFilter == "전체") "거리 ▾" else "$distanceFilter ▾", distanceBucketOptions) { distanceFilter = it }
+            FilterDropdownChip(if (difficultyFilter == "전체") "난이도 ▾" else "$difficultyFilter ▾", listOf("전체") + Difficulty.entries.filter { it != Difficulty.UNKNOWN }.map { it.label }) { difficultyFilter = it }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(18.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("추천순 · ${displayedCourses.size}개 코스", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            Text("한눈에 비교하기", fontSize = 11.sp, color = RunGray)
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         // 맞춤 조건 추천(Condition/Result 플로우)은 Figma엔 없지만 기존 기능이라 톤만 맞춰 유지
         Row(
@@ -492,27 +506,57 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> U
             Text("조건에 맞는 코스가 없어요.", color = RunGray, modifier = Modifier.padding(top = 24.dp))
         } else {
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(displayedCourses) { course ->
-                    CourseListRow(course) { onCourseClick(course) }
+                itemsIndexed(displayedCourses) { index, course ->
+                    CourseListRow(course, index) { onCourseClick(course) }
                 }
+                item { Text("아래로 스크롤해 더 많은 코스 보기", fontSize = 11.sp, color = RunGray, modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
             }
         }
     }
 }
 
 @Composable
-fun CourseListRow(course: Course, onClick: () -> Unit) {
+private fun FilterDropdownChip(label: String, options: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(17.dp))
+                .background(RunWhite)
+                .border(1.dp, RunBorderGray, RoundedCornerShape(17.dp))
+                .clickable { expanded = true }
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = RunBlack)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false })
+            }
+        }
+    }
+}
+
+// 코스별 컬러 썸네일 팔레트 — Figma 카드 디자인의 장식용 배경색(콘텐츠 데이터 아님, 인덱스로 순환)
+private val courseThumbnailColors = listOf(Color(0xFFDEEBED), Color(0xFFF0E5D1), Color(0xFFE3EBE0), Color(0xFFEBE5DB))
+
+@Composable
+fun CourseListRow(course: Course, index: Int = 0, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = RunWhite)
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = RunWhite),
+        border = BorderStroke(1.dp, RunBorderGray)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 18.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            CourseThumbnail(
+                label = course.sceneryLabel(),
+                color = courseThumbnailColors[index % courseThumbnailColors.size]
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(course.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     if (course.status == ContentStatus.DRAFT) {
@@ -520,13 +564,59 @@ fun CourseListRow(course: Course, onClick: () -> Unit) {
                         DraftBadge()
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(course.locationLabel(), fontSize = 11.sp, color = RunGray)
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    "${course.distanceLabel()} · ${course.sceneryLabel()} · ${course.difficulty.label}",
-                    fontSize = 13.sp, color = RunGray
+                    "${course.distanceLabel()} · ${course.timeLabel()} · ${course.difficulty.label}",
+                    fontSize = 11.sp, fontWeight = FontWeight.Medium, color = RunBlack
                 )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ListTag(course.sceneryLabel())
+                    ListTag(course.terrain.label)
+                }
             }
             Icon(Icons.Default.ChevronRight, null, tint = RunGray, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun ListTag(text: String) {
+    Box(modifier = Modifier.clip(RoundedCornerShape(11.dp)).background(RunBgGray).padding(horizontal = 10.dp, vertical = 4.dp)) {
+        Text(text, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = RunGray)
+    }
+}
+
+// Figma의 "Route Accent"(작은 루프 경로 아이콘) + "Finish Dot"을 Canvas로 근사한 코스 썸네일.
+// 실제 코스 사진(cover_image_url)이 채워지기 전까지 쓰는 장식용 자리표시.
+@Composable
+private fun CourseThumbnail(label: String, color: Color) {
+    Box(
+        modifier = Modifier.size(width = 92.dp, height = 88.dp).clip(RoundedCornerShape(16.dp)).background(color),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(52.dp, 34.dp)) {
+            val strokeWidth = 2.dp.toPx()
+            drawOval(
+                color = RunBlack.copy(alpha = 0.55f),
+                topLeft = androidx.compose.ui.geometry.Offset(0f, 0f),
+                size = androidx.compose.ui.geometry.Size(size.width, size.height),
+                style = Stroke(width = strokeWidth)
+            )
+            drawCircle(
+                color = RunBlack.copy(alpha = 0.7f),
+                radius = strokeWidth * 1.6f,
+                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height)
+            )
+        }
+        Box(
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
+                .clip(RoundedCornerShape(9.dp)).background(RunWhite.copy(alpha = 0.45f))
+                .padding(horizontal = 10.dp, vertical = 3.dp)
+        ) {
+            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = RunGray)
         }
     }
 }
@@ -880,17 +970,7 @@ fun DetailScreen(
         )
         Spacer(Modifier.height(24.dp))
 
-        Text("QUICK INFO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunPurple)
-        Spacer(Modifier.height(12.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            QuickInfoCell("거리", course.distanceLabel(), Modifier.weight(1f))
-            QuickInfoCell("예상", course.timeLabel(), Modifier.weight(1f))
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            QuickInfoCell("난이도", course.difficulty.label, Modifier.weight(1f))
-            QuickInfoCell("추천", course.sceneryLabel(), Modifier.weight(1f))
-        }
+        CourseInfoCard(course)
         Spacer(Modifier.height(24.dp))
 
         val s = safety
@@ -930,9 +1010,7 @@ fun DetailScreen(
         }
         Spacer(Modifier.height(24.dp))
 
-        Text("ROUTE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunGray)
-        Spacer(Modifier.height(8.dp))
-        CourseMapCard(course = course, title = course.name, heightDp = 200)
+        CourseMapCard(course = course, title = course.name, heightDp = 220)
         Spacer(Modifier.height(24.dp))
 
         Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -945,14 +1023,57 @@ fun DetailScreen(
             shape = RoundedCornerShape(28.dp),
             border = BorderStroke(1.5.dp, RunBlack),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)) {
-            Text(if (saved) "매거진 저장됨 ✓" else "이 매거진 저장하기", fontWeight = FontWeight.Bold)
+            Text(if (saved) "코스 저장됨 ✓" else "코스 저장하기", fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
     }
 }
 
-// 실제 사진 대신 코스명을 크게 얹은 커버 플레이스홀더
-// (Magazine Card Specs: "사진은 교체 가능한 표지 영역" — 실제 사진 붙이기 전 자리표시)
+// Figma "COURSE INFO" 카드: 코스명/위치·거리/예상 소요 시간·경관 유형/교통량을 카드형 key-value로 표시.
+@Composable
+fun CourseInfoCard(course: Course) {
+    Box(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFFF5F5F2))
+            .border(1.dp, Color(0xFFDED6C9), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Column {
+            Text("COURSE INFO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunPurple)
+            Spacer(Modifier.height(12.dp))
+            CourseInfoLine("코스명", course.name)
+            Spacer(Modifier.height(14.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                CourseInfoLine("위치", course.locationLabel(), Modifier.weight(1f))
+                CourseInfoLine("거리", course.distanceLabel(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                CourseInfoLine("예상 소요 시간", course.timeLabel(), Modifier.weight(1f))
+                CourseInfoLine("경관 유형", course.sceneryLabel(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("교통량", fontSize = 9.sp, color = Color(0xFF7B746A))
+            Spacer(Modifier.height(6.dp))
+            Box(modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xFFF1F6EC)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                Text(course.trafficLevel.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF51664B))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CourseInfoLine(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(label, fontSize = 9.sp, color = Color(0xFF7B746A))
+        Spacer(Modifier.height(4.dp))
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+    }
+}
+
+// Figma "Course Cover / DB Template": 실제 사진(cover_image_url) 위에 하단 어둡게 오버레이 +
+// RUN 태그칩 + 2줄 헤드라인 + 코스명 서브카피 + 거리·시간·지형 메타라인 + RUNQ PICKS.
+// 실제 사진이 아직 없어서(cover_image_url 미확정) 사진 자리는 그라데이션으로 대체.
 @Composable
 fun CourseCoverPlaceholder(course: Course) {
     Box(
@@ -967,31 +1088,27 @@ fun CourseCoverPlaceholder(course: Course) {
                 )
             )
         )
-        Column(modifier = Modifier.align(Alignment.TopStart).padding(20.dp)) {
-            Text(
-                course.name, color = RunWhite, fontWeight = FontWeight.Black,
-                fontSize = 34.sp, lineHeight = 38.sp
-            )
-        }
-        Row(
-            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
+        Box(
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 24.dp, start = 20.dp)
+                .clip(RoundedCornerShape(2.dp)).background(RunLime).padding(horizontal = 8.dp, vertical = 3.dp)
         ) {
-            Text("FULL LOOP", color = RunWhite, fontWeight = FontWeight.Black, fontSize = 22.sp)
-            Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(RunLime).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                Text(course.distanceLabel(), color = RunBlack, fontWeight = FontWeight.Black, fontSize = 13.sp)
-            }
+            Text("RUN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = RunBlack)
         }
-    }
-}
-
-@Composable
-fun QuickInfoCell(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Text(label, fontSize = 12.sp, color = RunGray)
-        Spacer(Modifier.height(4.dp))
-        Text(value, fontSize = 18.sp, fontWeight = FontWeight.Black, color = RunBlack)
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(20.dp)) {
+            Text(
+                course.reasonText().let { it.substringBefore('\n').ifBlank { course.name } },
+                color = RunWhite, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 31.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(course.name, color = RunLime, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${course.distanceLabel()} · ${course.timeLabel()} · ${course.terrain.label}",
+                color = RunWhite.copy(alpha = 0.75f), fontSize = 9.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("RUNQ PICKS", color = RunWhite.copy(alpha = 0.5f), fontWeight = FontWeight.Bold, fontSize = 8.sp)
+        }
     }
 }
 

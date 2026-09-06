@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -31,7 +33,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 
 // ════════════════════════════════════════════════════════
-// 홈 화면: "10 Home/Main.png" 기준 — 라임→라벤더 그라데이션 히어로 + 검색 + 거리칩 + Today's Run
+// 홈 화면: Figma "10 Home/Main" 기준 — 크림 배경 + 좌상단 라임/우상단 라벤더 ambient glow +
+// 검색 + 거리칩 + Today's Run(라임→연노랑→라벤더 그라데이션 카드)
 // ════════════════════════════════════════════════════════
 @Composable
 fun HomeScreen(onFindCourses: () -> Unit) {
@@ -44,21 +47,26 @@ fun HomeScreen(onFindCourses: () -> Unit) {
         try { safety = fetchSafety(featured?.weatherGrid()) } catch (e: Exception) { }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(RunCream)) {
+    Box(modifier = Modifier.fillMaxSize().background(RunCream)) {
+        // Figma "10 Home/Main": 헤더 뒤는 통짜 그라데이션이 아니라, 좌상단 라임/우상단 라벤더
+        // 은은한 ambient glow 블롭 두 개만 크림 배경 위에 흐릿하게 얹혀있음.
         Box(
-            modifier = Modifier.fillMaxWidth().background(
-                Brush.linearGradient(
-                    colors = listOf(RunLime.copy(alpha = 0.55f), RunCream, RunLavender.copy(alpha = 0.5f))
-                )
-            )
-        ) {
+            modifier = Modifier.size(310.dp).offset(x = (-100).dp, y = (-90).dp).blur(60.dp)
+                .background(Brush.radialGradient(listOf(RunLime.copy(alpha = 0.5f), Color.Transparent)), CircleShape)
+        )
+        Box(
+            modifier = Modifier.size(255.dp).offset(x = 190.dp, y = 55.dp).blur(60.dp)
+                .background(Brush.radialGradient(listOf(RunLavender.copy(alpha = 0.5f), Color.Transparent)), CircleShape)
+        )
+
+        Column(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("RunQ", fontSize = 20.sp, fontWeight = FontWeight.Black, color = RunBlack)
+                    Text("RunQ", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     Box(
                         modifier = Modifier.size(36.dp).clip(CircleShape).background(RunWhite.copy(alpha = 0.7f)),
                         contentAlignment = Alignment.Center
@@ -68,13 +76,15 @@ fun HomeScreen(onFindCourses: () -> Unit) {
                 }
                 Spacer(Modifier.height(28.dp))
                 Text(
-                    "오늘은 어디로\n달려볼까요?", fontSize = 26.sp, fontWeight = FontWeight.Black,
-                    color = RunBlack, lineHeight = 32.sp
+                    "오늘은 어디로 달려볼까요?", fontSize = 25.sp, fontWeight = FontWeight.Bold,
+                    color = RunBlack, lineHeight = 30.sp
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                        .background(RunWhite).padding(horizontal = 16.dp, vertical = 14.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                        .background(RunWhite)
+                        .border(1.dp, RunBorderGray, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = RunGray, modifier = Modifier.size(18.dp))
@@ -86,7 +96,7 @@ fun HomeScreen(onFindCourses: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                Text("거리로 찾기", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Text("거리로 찾기", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("전체", "3km", "5km", "10km+").forEach { label ->
@@ -94,33 +104,29 @@ fun HomeScreen(onFindCourses: () -> Unit) {
                         Box(
                             modifier = Modifier.clip(RoundedCornerShape(20.dp))
                                 .background(if (selected) RunPurple else RunWhite)
+                                .then(if (selected) Modifier else Modifier.border(1.dp, RunBorderGray, RoundedCornerShape(20.dp)))
                                 .clickable { distanceFilter = label }
                                 .padding(horizontal = 16.dp, vertical = 9.dp)
                         ) {
-                            Text(
-                                label, fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) RunWhite else RunBlack
-                            )
+                            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = RunBlack)
                         }
                     }
                 }
             }
-        }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp)
-        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp)
+            ) {
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("오늘의 추천 코스", fontSize = 17.sp, fontWeight = FontWeight.Black, color = RunBlack)
+                    Text("오늘의 추천 코스", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     Text(
-                        "전체보기", fontSize = 13.sp, color = RunGray,
+                        "전체보기", fontSize = 12.sp, color = RunGray,
                         modifier = Modifier.clickable { onFindCourses() }
                     )
                 }
@@ -130,6 +136,7 @@ fun HomeScreen(onFindCourses: () -> Unit) {
                 } else {
                     Text("아직 등록된 코스가 없어요.", fontSize = 13.sp, color = RunGray)
                 }
+            }
             }
         }
     }
@@ -144,7 +151,7 @@ fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
     ) {
         Box(
             modifier = Modifier.fillMaxWidth().background(
-                Brush.linearGradient(listOf(RunLime, RunLavender.copy(alpha = 0.8f)))
+                Brush.linearGradient(listOf(RunLime, Color(0xFFF7F592), RunLavender))
             )
         ) {
             Column(Modifier.padding(20.dp)) {
@@ -152,7 +159,7 @@ fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "${course.locationLabel().removePrefix("강릉 ")}, ${course.distanceLabel()} 가볍게",
-                    fontSize = 19.sp, fontWeight = FontWeight.Black, color = RunBlack, lineHeight = 24.sp
+                    fontSize = 25.sp, fontWeight = FontWeight.Bold, color = RunBlack, lineHeight = 29.sp
                 )
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
