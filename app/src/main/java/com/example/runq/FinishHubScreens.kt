@@ -76,12 +76,14 @@ private fun curatedPlaces(hub: FinishHub, category: PlaceCategory): List<FinishH
 
 // distance_from_hub_m이 아직 비어있어도 장소/Hub 둘 다 좌표가 있으면 화면 표시용으로
 // 즉석 계산한다(콘텐츠 JSON에는 쓰지 않음 — 계산값과 팀이 확정한 값을 구분해서 다룬다).
-fun FinishHubPlace.distanceLabel(hub: FinishHub?): String? {
-    distMeters?.toDoubleOrNull()?.let { return "${it.toInt()}m" }
+fun FinishHubPlace.distanceMeters(hub: FinishHub?): Double? {
+    distMeters?.toDoubleOrNull()?.let { return it }
     val plat = lat; val plng = lng
     if (hub == null || plat == null || plng == null) return null
-    return "${haversineMeters(hub.resolvedLat, hub.resolvedLng, plat, plng).toInt()}m"
+    return haversineMeters(hub.resolvedLat, hub.resolvedLng, plat, plng)
 }
+
+fun FinishHubPlace.distanceLabel(hub: FinishHub?): String? = distanceMeters(hub)?.let { "${it.toInt()}m" }
 
 private fun mergeCurated(curated: List<FinishHubPlace>, apiResults: List<FinishHubPlace>): List<FinishHubPlace> {
     val curatedTitles = curated.map { it.title }
@@ -514,7 +516,8 @@ fun PlaceFlow() {
     var step by remember { mutableStateOf<PlaceStep>(PlaceStep.Home) }
     when (val s = step) {
         is PlaceStep.Home -> PlaceHomeScreen(
-            onHubClick = { hub, category -> step = PlaceStep.HubList(hub, category) }
+            onPlaceClick = { hub, place -> step = PlaceStep.Detail(hub, place) },
+            onSeeAll = { hub, category -> step = PlaceStep.HubList(hub, category) }
         )
         is PlaceStep.HubList -> HubPlacesScreen(
             hub = s.hub,
@@ -527,64 +530,187 @@ fun PlaceFlow() {
             place = s.place,
             hubName = s.hub.name,
             hub = s.hub,
-            onBack = { step = PlaceStep.HubList(s.hub, s.place.category) }
+            onBack = { step = PlaceStep.Home }
         )
     }
 }
 
+// Figma "30 Places / Home": Hub 목록을 먼저 고르는 대신, 현재 Hub 하나를 바로 보여주고
+// 지도 + 카테고리 필터 + 가까운 순 리스트를 한 화면에 담는다. Hub는 헤더에서 바로 바꿀 수 있다.
 @Composable
-fun PlaceHomeScreen(onHubClick: (FinishHub, PlaceCategory) -> Unit) {
-    var category by remember { mutableStateOf(PlaceCategory.EAT) }
+fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll: (FinishHub, PlaceCategory) -> Unit) {
+    val activeHubs = remember { RunQData.finishHubs.filter { it.status != ContentStatus.HIDDEN } }
+    var currentHub by remember { mutableStateOf(activeHubs.firstOrNull()) }
+    var category by remember { mutableStateOf<PlaceCategory?>(null) }
+    var sortByDistance by remember { mutableStateOf(true) }
+    var hubMenuExpanded by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().background(RunCream).padding(24.dp)) {
-        Text("PLACE", fontSize = 26.sp, fontWeight = FontWeight.Black, color = RunBlack)
-        Text("러닝 전후, 강릉을 더 즐겨보세요", fontSize = 14.sp, color = RunGray)
-        Spacer(Modifier.height(16.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(RunWhite).padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = RunGray, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("장소, 지역을 검색해보세요", fontSize = 13.sp, color = RunGray)
+    val places = remember(currentHub, category, sortByDistance) {
+        val hub = currentHub
+        if (hub == null) emptyList() else {
+            val filtered = RunQData.places.filter {
+                it.finishHubId == hub.id && it.status != ContentStatus.HIDDEN && (category == null || it.category == category)
+            }
+            if (sortByDistance) filtered.sortedBy { it.distMeters?.toDoubleOrNull() ?: Double.MAX_VALUE }
+            else filtered.sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenBy { it.displayOrder })
         }
-        Spacer(Modifier.height(24.dp))
-        Text("FINISH HUB", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunGray)
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(RunQData.finishHubs.filter { it.status != ContentStatus.HIDDEN }) { hub ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { onHubClick(hub, category) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = RunWhite)
+    }
+
+    if (currentHub == null) {
+        Box(modifier = Modifier.fillMaxSize().background(RunCream), contentAlignment = Alignment.Center) {
+            Text("등록된 Finish Hub가 없어요.", color = RunGray)
+        }
+        return
+    }
+    val hub = currentHub!!
+
+    Column(modifier = Modifier.fillMaxSize().background(RunCream)) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("FINISH HUB", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            Spacer(Modifier.height(6.dp))
+            Text("달린 다음, 근처 좋은 곳으로.", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            Spacer(Modifier.height(6.dp))
+            Box {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { hubMenuExpanded = true }
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(hub.name, fontSize = 15.sp, fontWeight = FontWeight.Black, color = RunBlack)
-                            Spacer(Modifier.height(2.dp))
-                            val eatCount = RunQData.places.count { it.finishHubId == hub.id && it.category == PlaceCategory.EAT }
-                            val cafeCount = RunQData.places.count { it.finishHubId == hub.id && it.category == PlaceCategory.CAFE }
-                            val seeCount = RunQData.places.count { it.finishHubId == hub.id && it.category == PlaceCategory.SEE }
-                            Text(
-                                "EAT $eatCount · CAFE $cafeCount · SEE $seeCount",
-                                fontSize = 12.sp, color = RunGray
-                            )
-                        }
-                        Icon(Icons.Filled.ChevronRight, null, tint = RunGray, modifier = Modifier.size(18.dp))
+                    Text(
+                        "${hub.name} · 반경 ${"%.1f".format(hub.eatRadiusM / 1000.0)} KM",
+                        fontSize = 12.sp, color = RunGray
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("▾", fontSize = 12.sp, color = RunGray)
+                }
+                DropdownMenu(expanded = hubMenuExpanded, onDismissRequest = { hubMenuExpanded = false }) {
+                    activeHubs.forEach { h ->
+                        DropdownMenuItem(text = { Text(h.name) }, onClick = { currentHub = h; hubMenuExpanded = false })
                     }
                 }
             }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlaceHomeFilterChip("전체", category == null) { category = null }
+                PlaceCategory.entries.forEach { c -> PlaceHomeFilterChip(c.label, category == c, c.accent) { category = c } }
+            }
         }
-        Spacer(Modifier.height(4.dp))
-        Text("CATEGORY", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunGray)
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlaceCategory.values().forEach { c -> CategoryChip(c, category == c) { category = c } }
+
+        Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
+            KakaoPlacesMap(
+                modifier = Modifier.fillMaxSize(),
+                center = RoutePoint(hub.resolvedLat, hub.resolvedLng),
+                places = places.mapNotNull { p -> val lat = p.lat; val lng = p.lng; if (lat != null && lng != null) RoutePoint(lat, lng) to p.category else null }
+            )
+            Box(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp)
+                    .clip(RoundedCornerShape(15.dp)).background(RunWhite).padding(horizontal = 14.dp, vertical = 7.dp)
+            ) {
+                Text("${places.size} PLACES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            }
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth().weight(1f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(Color(0xFFFDFCF8)).padding(top = 20.dp, start = 20.dp, end = 20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("지금 가까운 곳", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Finish Hub 주변 ${places.size}곳", fontSize = 11.sp, color = RunGray)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PlaceSortChip("거리순", sortByDistance) { sortByDistance = true }
+                    PlaceSortChip("추천순", !sortByDistance) { sortByDistance = false }
+                }
+            }
+            category?.let { c ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "$c 전체보기", fontSize = 12.sp, color = RunPurple, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onSeeAll(hub, c) }
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            if (places.isEmpty()) {
+                Text("아직 등록된 장소가 없어요.", fontSize = 13.sp, color = RunGray, modifier = Modifier.padding(top = 20.dp))
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(places) { place ->
+                        PlaceListCard(place) { onPlaceClick(hub, place) }
+                    }
+                    item { Spacer(Modifier.height(12.dp)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceHomeFilterChip(label: String, selected: Boolean, accent: Color = RunLime, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(15.dp))
+            .background(if (selected) accent else RunWhite)
+            .then(if (selected) Modifier else Modifier.border(1.dp, RunBorderGray, RoundedCornerShape(15.dp)))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+    ) {
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+    }
+}
+
+@Composable
+private fun PlaceSortChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(15.dp))
+            .background(RunWhite)
+            .border(1.dp, if (selected) RunBlack else RunBorderGray, RoundedCornerShape(15.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = RunBlack)
+    }
+}
+
+@Composable
+private fun PlaceListCard(place: FinishHubPlace, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(18.dp))
+            .clickable { onClick() }.padding(12.dp)
+    ) {
+        val hub = findHub(place.finishHubId)
+        val meters = place.distanceMeters(hub)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(70.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.35f))
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(place.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(place.category.accent).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        Text(place.category.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    }
+                    meters?.let {
+                        Spacer(Modifier.width(8.dp))
+                        Text("${it.toInt()}m", fontSize = 11.sp, color = RunGray)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    meters?.let { "도보 ${walkingMinutes(it).toInt()} 분" }
+                        ?: (if (place.isCurated) "RunQ가 골라둔 스팟" else place.addr.ifBlank { "코스 근처 스팟" }),
+                    fontSize = 11.sp, color = RunGray
+                )
+            }
+            Text("♡", fontSize = 18.sp, color = RunGray)
         }
     }
 }

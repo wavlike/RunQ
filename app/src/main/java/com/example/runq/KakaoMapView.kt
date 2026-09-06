@@ -145,6 +145,60 @@ fun KakaoRouteMap(
     }
 }
 
+// 카테고리별로 구분되는 시스템 아이콘 — 커스텀 마커 비트맵 없이도 EAT/CAFE/SEE를 시각적으로 구분한다.
+private fun markerDrawableFor(category: PlaceCategory): Int = when (category) {
+    PlaceCategory.EAT -> android.R.drawable.presence_online
+    PlaceCategory.CAFE -> android.R.drawable.presence_away
+    PlaceCategory.SEE -> android.R.drawable.presence_busy
+}
+
+/**
+ * Finish Hub 주변 EAT/CAFE/SEE 장소 핀을 보여주는 지도. (Figma "30 Places/Home")
+ * hub 좌표를 중심으로 카메라를 맞추고, 좌표가 있는 place마다 카테고리색 라벨을 찍는다.
+ */
+@Composable
+fun KakaoPlacesMap(
+    modifier: Modifier = Modifier,
+    center: RoutePoint,
+    places: List<Pair<RoutePoint, PlaceCategory>>
+) {
+    if (BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank()) {
+        Box(modifier = modifier.background(RunBgGray), contentAlignment = Alignment.Center) {
+            Text("Kakao 지도 키가 설정되지 않았어요.\nlocal.properties에 KAKAO_NATIVE_APP_KEY를 채워주세요.",
+                fontSize = 12.sp, color = RunGray)
+        }
+        return
+    }
+
+    var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it })
+
+    AndroidView(modifier = modifier, factory = { mapView })
+
+    LaunchedEffect(kakaoMap, center, places) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        runCatching {
+            val labelManager = map.labelManager
+            val layer = labelManager?.layer
+            layer?.removeAll()
+            val stylesByCategory = PlaceCategory.entries.associateWith { category ->
+                labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(markerDrawableFor(category))))
+            }
+            places.forEach { (point, category) ->
+                layer?.addLabel(
+                    LabelOptions.from(LatLng.from(point.lat, point.lng)).setStyles(stylesByCategory[category])
+                )
+            }
+            val bounds = (places.map { it.first } + center).map { LatLng.from(it.lat, it.lng) }
+            if (bounds.size > 1) {
+                map.moveCamera(CameraUpdateFactory.fitMapPoints(bounds.toTypedArray(), 100))
+            } else {
+                map.moveCamera(CameraUpdateFactory.newCenterPosition(LatLng.from(center.lat, center.lng)))
+            }
+        }
+    }
+}
+
 /**
  * 경로(points)를 따라 진행률(progress, 0~1)에 해당하는 지점을 선형보간으로 계산.
  * 실제 GPS 트래킹이 붙기 전까지 "지금 위치" 시뮬레이션에 쓴다 (지구 곡률 무시한 단순 근사).
