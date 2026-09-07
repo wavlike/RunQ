@@ -40,8 +40,12 @@ import kotlinx.coroutines.delay
 // 장소를 "RunQ Pick"으로 맨 위에 고정하고, API 결과는 뒤에 보충한다.
 // ════════════════════════════════════════════════════════
 
+// EVENT는 Figma Foundations에 지정된 4번째 강조색이 없어서, 새 색을 만들지 않고
+// 기존 팔레트의 중립색(RunGray)을 그대로 재사용한다. accent는 칩 배경(검정 텍스트가
+// 얹힘)과 단독 텍스트색 둘 다로 쓰이는데, RunGray는 앱 전체에서 이미 보조 텍스트색으로
+// 쓰이고 있어 어느 쪽으로 써도 눈에 잘 띄지 않거나 안 보이는 문제가 없다.
 enum class PlaceCategory(val label: String, val accent: Color) {
-    EAT("EAT", RunLime), CAFE("CAFE", RunPurple), SEE("SEE", RunLavender)
+    EAT("EAT", RunLime), CAFE("CAFE", RunPurple), SEE("SEE", RunLavender), EVENT("행사", RunGray)
 }
 
 data class FinishHubPlace(
@@ -59,7 +63,8 @@ data class FinishHubPlace(
     val isFeatured: Boolean = false,
     val displayOrder: Int = 999,
     val status: ContentStatus = ContentStatus.ACTIVE,
-    val isCurated: Boolean = false     // RunQ 큐레이션(엑셀) 출처인지
+    val isCurated: Boolean = false,    // RunQ 큐레이션(엑셀) 출처인지
+    val eventPeriod: String? = null    // 행사(EVENT)만 사용 — "6.1 ~ 6.30" 형태의 기간 표시
 )
 
 data class FinishHubResult(
@@ -95,6 +100,18 @@ private fun mergeCurated(curated: List<FinishHubPlace>, apiResults: List<FinishH
     return curated + rest
 }
 
+// TourAPI 결과를 FinishHubPlace로 옮길 때 mapX/mapY(좌표)까지 같이 넘긴다.
+// (예전엔 안 넘겨서 API로 가져온 장소가 지도에 안 찍히는 버그가 있었음)
+private fun TourPlace.toFinishHubPlace(category: PlaceCategory): FinishHubPlace = FinishHubPlace(
+    title = title ?: "-",
+    addr = addr1 ?: "",
+    category = category,
+    contentId = contentId,
+    distMeters = dist,
+    lat = mapY?.toDoubleOrNull(),
+    lng = mapX?.toDoubleOrNull()
+)
+
 suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
     val hubLat = hub.resolvedLat
     val hubLng = hub.resolvedLng
@@ -108,9 +125,9 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
     }.getOrDefault(emptyList())
 
     val cafeFromTourApi = foodItems.filter { p -> cafeKeywords.any { (p.title ?: "").contains(it, true) } }
-        .map { FinishHubPlace(it.title ?: "-", it.addr1 ?: "", PlaceCategory.CAFE, it.contentId, it.dist) }
+        .map { it.toFinishHubPlace(PlaceCategory.CAFE) }
     val eatApiRaw = foodItems.filterNot { p -> cafeKeywords.any { (p.title ?: "").contains(it, true) } }
-        .map { FinishHubPlace(it.title ?: "-", it.addr1 ?: "", PlaceCategory.EAT, it.contentId, it.dist) }
+        .map { it.toFinishHubPlace(PlaceCategory.EAT) }
 
     // Kakao Local CE7(카페) 보완 — TourAPI 키워드 필터만으로는 카페가 잘 안 잡히므로
     // 좌표 기반 카테고리 검색으로 채운다(REST 키 없으면 빈 목록, 조용히 건너뜀).
@@ -135,7 +152,7 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
             ).response.body.items?.item ?: emptyList()
         }.getOrDefault(emptyList())
     }.distinctBy { it.title }
-        .map { FinishHubPlace(it.title ?: "-", it.addr1 ?: "", PlaceCategory.SEE, it.contentId, it.dist) }
+        .map { it.toFinishHubPlace(PlaceCategory.SEE) }
 
     return FinishHubResult(
         hub = hub,
@@ -143,6 +160,38 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
         cafe = mergeCurated(curatedPlaces(hub, PlaceCategory.CAFE), cafeApiRaw),
         see = mergeCurated(curatedPlaces(hub, PlaceCategory.SEE), seeApiRaw)
     )
+}
+
+// 강릉 행사/축제(TourAPI searchFestival2) — 특정 Finish Hub에 묶이지 않고 강릉시 전체를 조회한다.
+// 오늘부터 진행 중이거나 예정된 행사만 보여준다(eventEndDate 없이 시작일만 넘기면
+// TourAPI가 "eventStartDate 이후 종료되는" 행사를 돌려준다).
+suspend fun fetchFestivals(): List<FinishHubPlace> {
+    val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.KOREA).format(java.util.Date())
+    val items = runCatching {
+        TourApiClient.api.searchFestivals(eventStartDate = today).response.body.items?.item ?: emptyList()
+    }.getOrDefault(emptyList())
+
+    return items.map { f ->
+        FinishHubPlace(
+            title = f.title ?: "-",
+            addr = f.addr1 ?: "",
+            category = PlaceCategory.EVENT,
+            contentId = f.contentId,
+            lat = f.mapY?.toDoubleOrNull(),
+            lng = f.mapX?.toDoubleOrNull(),
+            eventPeriod = festivalPeriodLabel(f.eventStartDate, f.eventEndDate)
+        )
+    }
+}
+
+private fun festivalPeriodLabel(startYmd: String?, endYmd: String?): String? {
+    fun format(ymd: String?): String? {
+        if (ymd == null || ymd.length != 8) return null
+        return "${ymd.substring(4, 6).toInt()}.${ymd.substring(6, 8).toInt()}"
+    }
+    val start = format(startYmd) ?: return null
+    val end = format(endYmd)
+    return if (end == null || end == start) start else "$start ~ $end"
 }
 
 // ════════════════════════════════════════════════════════
@@ -618,15 +667,33 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
         }
     }
 
+    // 행사(EVENT)는 특정 Hub에 묶이지 않는 강릉시 전체 정보라 별도로 한 번만 불러온다.
+    var festivals by remember { mutableStateOf<List<FinishHubPlace>?>(null) }
+    var festivalLoadFailed by remember { mutableStateOf(false) }
+    var festivalRetryTick by remember { mutableStateOf(0) }
+
+    LaunchedEffect(category, festivalRetryTick) {
+        if (category == PlaceCategory.EVENT && (festivals == null || festivalRetryTick > 0)) {
+            festivals = null
+            festivalLoadFailed = false
+            val fetched = runCatching { fetchFestivals() }.getOrNull()
+            festivals = fetched
+            festivalLoadFailed = fetched == null
+        }
+    }
+
+    val isEventTab = category == PlaceCategory.EVENT
     val allPlaces = remember(hubResult) {
         val r = hubResult ?: return@remember emptyList()
         (r.eat + r.cafe + r.see).filter { it.status != ContentStatus.HIDDEN }
     }
-    val places = remember(allPlaces, category, sortByDistance, currentHub) {
+    val places = remember(allPlaces, festivals, category, sortByDistance, currentHub) {
         val hub = currentHub
-        val filtered = if (category == null) allPlaces else allPlaces.filter { it.category == category }
-        if (sortByDistance) filtered.sortedBy { it.distanceMeters(hub) ?: Double.MAX_VALUE }
-        else filtered.sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenBy { it.displayOrder })
+        val source = if (isEventTab) (festivals ?: emptyList())
+            else if (category == null) allPlaces
+            else allPlaces.filter { it.category == category }
+        if (sortByDistance) source.sortedBy { it.distanceMeters(hub) ?: Double.MAX_VALUE }
+        else source.sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenBy { it.displayOrder })
     }
 
     if (currentHub == null) {
@@ -678,7 +745,8 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
                 modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp)
                     .clip(RoundedCornerShape(15.dp)).background(RunWhite).padding(horizontal = 14.dp, vertical = 7.dp)
             ) {
-                Text(if (hubResult == null && !loadFailed) "불러오는 중" else "${places.size} PLACES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                val stillLoading = if (isEventTab) (festivals == null && !festivalLoadFailed) else (hubResult == null && !loadFailed)
+                Text(if (stillLoading) "불러오는 중" else "${places.size} PLACES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
             }
         }
 
@@ -693,9 +761,12 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("지금 가까운 곳", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    Text(if (isEventTab) "지금 강릉 행사" else "지금 가까운 곳", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     Spacer(Modifier.height(4.dp))
-                    Text("Finish Hub 주변 ${places.size}곳", fontSize = 11.sp, color = RunGray)
+                    Text(
+                        if (isEventTab) "진행중 · 예정 행사 ${places.size}건" else "Finish Hub 주변 ${places.size}곳",
+                        fontSize = 11.sp, color = RunGray
+                    )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PlaceSortChip("거리순", sortByDistance) { sortByDistance = true }
@@ -703,20 +774,32 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
                 }
             }
             category?.let { c ->
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "$c 전체보기", fontSize = 12.sp, color = RunPurple, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { onSeeAll(hub, c) }
-                )
+                if (c != PlaceCategory.EVENT) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "$c 전체보기", fontSize = 12.sp, color = RunPurple, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { onSeeAll(hub, c) }
+                    )
+                }
             }
             Spacer(Modifier.height(14.dp))
             when {
-                loadFailed -> ErrorStateView(
+                isEventTab && festivalLoadFailed -> ErrorStateView(
+                    "행사 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
+                    onRetry = { festivalRetryTick++ }, modifier = Modifier.padding(top = 20.dp)
+                )
+                isEventTab && festivals == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
+                !isEventTab && loadFailed -> ErrorStateView(
                     "추천 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
                     onRetry = { retryTick++ }, modifier = Modifier.padding(top = 20.dp)
                 )
-                hubResult == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
-                places.isEmpty() -> EmptyStateView("📍", "아직 등록된 장소가 없어요", "다른 Hub나 카테고리를 확인해보세요.", Modifier.padding(top = 20.dp))
+                !isEventTab && hubResult == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
+                places.isEmpty() -> EmptyStateView(
+                    if (isEventTab) "🎪" else "📍",
+                    if (isEventTab) "예정된 행사가 없어요" else "아직 등록된 장소가 없어요",
+                    if (isEventTab) "곧 새로운 행사가 열리면 알려드릴게요." else "다른 Hub나 카테고리를 확인해보세요.",
+                    Modifier.padding(top = 20.dp)
+                )
                 else -> LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(places) { place ->
                         PlaceListCard(place) { onPlaceClick(hub, place) }
@@ -775,14 +858,17 @@ private fun PlaceListCard(place: FinishHubPlace, onClick: () -> Unit) {
                     Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(place.category.accent).padding(horizontal = 8.dp, vertical = 2.dp)) {
                         Text(place.category.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     }
-                    meters?.let {
-                        Spacer(Modifier.width(8.dp))
-                        Text("${it.toInt()}m", fontSize = 11.sp, color = RunGray)
+                    if (place.eventPeriod == null) {
+                        meters?.let {
+                            Spacer(Modifier.width(8.dp))
+                            Text("${it.toInt()}m", fontSize = 11.sp, color = RunGray)
+                        }
                     }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    meters?.let { "도보 ${walkingMinutes(it).toInt()} 분" }
+                    place.eventPeriod?.let { "$it 진행" }
+                        ?: meters?.let { "도보 ${walkingMinutes(it).toInt()} 분" }
                         ?: (if (place.isCurated) "RunQ가 골라둔 스팟" else place.addr.ifBlank { "코스 근처 스팟" }),
                     fontSize = 11.sp, color = RunGray
                 )
@@ -870,7 +956,8 @@ fun HubPlacesScreen(
         Text(sub, fontSize = 13.sp, color = RunGray)
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlaceCategory.values().forEach { c -> CategoryChip(c, tab == c) { tab = c } }
+            // 행사(EVENT)는 특정 Hub에 속하지 않는 강릉시 전체 정보라 이 Hub 전용 화면엔 안 보여준다.
+            PlaceCategory.entries.filter { it != PlaceCategory.EVENT }.forEach { c -> CategoryChip(c, tab == c) { tab = c } }
         }
         Spacer(Modifier.height(20.dp))
 
@@ -878,6 +965,7 @@ fun HubPlacesScreen(
             PlaceCategory.EAT -> result?.eat
             PlaceCategory.CAFE -> result?.cafe
             PlaceCategory.SEE -> result?.see
+            PlaceCategory.EVENT -> emptyList() // 행사는 Hub 범위가 아니라 Place 탭 홈에서만 별도로 보여줌
         }
         when {
             hub == null -> EmptyStateView("📍", "Finish Hub 정보가 없어요", "이 코스는 아직 Finish Hub가 연결되지 않았어요.", Modifier.padding(top = 30.dp))
@@ -988,8 +1076,9 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
         Text(place.title, fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Spacer(Modifier.height(4.dp))
         Text(
-            listOfNotNull(hubName, place.distanceLabel(hub)?.let { "Finish Hub에서 $it" }).joinToString(" · ")
-                .ifBlank { place.category.label },
+            place.eventPeriod?.let { "$it 진행" }
+                ?: listOfNotNull(hubName, place.distanceLabel(hub)?.let { "Finish Hub에서 $it" }).joinToString(" · ")
+                    .ifBlank { place.category.label },
             fontSize = 13.sp, color = RunGray
         )
         Spacer(Modifier.height(14.dp))

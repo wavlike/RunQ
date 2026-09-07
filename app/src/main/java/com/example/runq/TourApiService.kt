@@ -39,6 +39,22 @@ interface TourApi {
         @Query("addrinfoYN") addrInfoYN: String = "Y",
         @Query("overviewYN") overviewYN: String = "Y"
     ): DetailCommonResponse
+
+    // 강릉 행사/축제 (Place 탭의 "행사" 카테고리)
+    // lDongRegnCd/lDongSignguCd = 법정동코드(지역): 강원특별자치도=51, 강릉시=150
+    @GET("searchFestival2")
+    suspend fun searchFestivals(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("eventStartDate") eventStartDate: String,
+        @Query("eventEndDate") eventEndDate: String? = null,
+        @Query("lDongRegnCd") regnCd: String = "51",
+        @Query("lDongSignguCd") signguCd: String = "150",
+        @Query("numOfRows") numOfRows: Int = 30,
+        @Query("arrange") arrange: String = "O" // O = 제목순 (거리순 정렬 대상 좌표가 없어 제목순 사용)
+    ): FestivalResponse
 }
 
 // Retrofit 객체 (앱 전체에서 하나만 만들어 재사용)

@@ -65,3 +65,34 @@ data class DetailCommonItem(
     @SerializedName("overview") val overview: String?,
     @SerializedName("firstimage") val firstImage: String?
 )
+
+// ────────────────────────────────────────────────
+// 행사/축제(searchFestival2) 응답
+// 응답 JSON 구조: response > body > items > item[] (locationBasedList2와 동일한 껍데기)
+// ────────────────────────────────────────────────
+data class FestivalResponse(
+    @SerializedName("response") val response: FestivalBody
+)
+
+data class FestivalBody(
+    @SerializedName("body") val body: FestivalItems
+)
+
+data class FestivalItems(
+    @SerializedName("items") val items: FestivalItemList?
+)
+
+data class FestivalItemList(
+    @SerializedName("item") val item: List<TourFestival>?
+)
+
+data class TourFestival(
+    @SerializedName("contentid") val contentId: String?,
+    @SerializedName("title") val title: String?,
+    @SerializedName("addr1") val addr1: String?,
+    @SerializedName("firstimage") val firstImage: String?,
+    @SerializedName("eventstartdate") val eventStartDate: String?, // yyyyMMdd
+    @SerializedName("eventenddate") val eventEndDate: String?,     // yyyyMMdd
+    @SerializedName("mapx") val mapX: String?,
+    @SerializedName("mapy") val mapY: String?
+)

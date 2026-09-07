@@ -150,6 +150,7 @@ private fun markerDrawableFor(category: PlaceCategory): Int = when (category) {
     PlaceCategory.EAT -> android.R.drawable.presence_online
     PlaceCategory.CAFE -> android.R.drawable.presence_away
     PlaceCategory.SEE -> android.R.drawable.presence_busy
+    PlaceCategory.EVENT -> android.R.drawable.star_big_on
 }
 
 /**
