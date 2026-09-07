@@ -93,6 +93,9 @@ dependencies {
     implementation(libs.kakao.maps)
     implementation(libs.location.services)
 
+    // 장소/행사 실제 사진(firstimage 등 URL) 표시용 이미지 로더
+    implementation(libs.coil.compose)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

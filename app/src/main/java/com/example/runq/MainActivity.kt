@@ -354,7 +354,11 @@ fun CourseListRow(course: Course, index: Int = 0, onClick: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(course.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                    Text(
+                        course.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                     if (course.status == ContentStatus.DRAFT) {
                         Spacer(Modifier.width(6.dp))
                         DraftBadge()
@@ -472,7 +476,9 @@ fun DraftBadge() {
         modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(RunGray.copy(alpha = 0.25f))
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
-        Text("DRAFT", fontSize = 10.sp, color = RunGray, fontWeight = FontWeight.Black)
+        // 옆에 긴 제목이 있으면 이 배지가 극단적으로 좁게 눌릴 수 있는데, 그때 Text가
+        // 글자 하나씩 세로로 줄바꿈되는 걸 막기 위해 한 줄 고정 + 넘치면 자르기.
+        Text("DRAFT", fontSize = 10.sp, color = RunGray, fontWeight = FontWeight.Black, maxLines = 1, softWrap = false)
     }
 }
 

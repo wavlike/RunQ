@@ -64,8 +64,44 @@ data class FinishHubPlace(
     val displayOrder: Int = 999,
     val status: ContentStatus = ContentStatus.ACTIVE,
     val isCurated: Boolean = false,    // RunQ 큐레이션(엑셀) 출처인지
-    val eventPeriod: String? = null    // 행사(EVENT)만 사용 — "6.1 ~ 6.30" 형태의 기간 표시
+    val eventStartDate: String? = null, // 행사(EVENT)만 사용 — yyyyMMdd
+    val eventEndDate: String? = null,   // 행사(EVENT)만 사용 — yyyyMMdd
+    val imageUrl: String? = null        // 큐레이션(runq_image_url/tourapi_image_url) 또는 TourAPI firstimage
 )
+
+// 행사 진행 상태 — 오늘 날짜와 시작/종료일을 비교해 계산한다(API가 상태를 안 줘서 직접 판정).
+enum class FestivalStatus(val label: String, val color: Color) {
+    ONGOING("진행중", RunLime), UPCOMING("예정", RunPurple), ENDED("마감", RunGray)
+}
+
+private fun parseYmd(ymd: String?): java.util.Date? {
+    if (ymd == null || ymd.length != 8) return null
+    return runCatching { java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.KOREA).parse(ymd) }.getOrNull()
+}
+
+fun FinishHubPlace.festivalStatus(): FestivalStatus? {
+    val start = parseYmd(eventStartDate) ?: return null
+    val end = parseYmd(eventEndDate) ?: start
+    val today = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+    }.time
+    return when {
+        today.before(start) -> FestivalStatus.UPCOMING
+        today.after(end) -> FestivalStatus.ENDED
+        else -> FestivalStatus.ONGOING
+    }
+}
+
+fun FinishHubPlace.festivalPeriodLabel(): String? {
+    fun format(ymd: String?): String? {
+        if (ymd == null || ymd.length != 8) return null
+        return "${ymd.substring(4, 6).toInt()}.${ymd.substring(6, 8).toInt()}"
+    }
+    val start = format(eventStartDate) ?: return null
+    val end = format(eventEndDate)
+    return if (end == null || end == start) start else "$start ~ $end"
+}
 
 data class FinishHubResult(
     val hub: FinishHub,
@@ -109,7 +145,8 @@ private fun TourPlace.toFinishHubPlace(category: PlaceCategory): FinishHubPlace 
     contentId = contentId,
     distMeters = dist,
     lat = mapY?.toDoubleOrNull(),
-    lng = mapX?.toDoubleOrNull()
+    lng = mapX?.toDoubleOrNull(),
+    imageUrl = firstImage?.takeIf { it.isNotBlank() }
 )
 
 suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
@@ -163,15 +200,16 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
 }
 
 // 강릉 행사/축제(TourAPI searchFestival2) — 특정 Finish Hub에 묶이지 않고 강릉시 전체를 조회한다.
-// 오늘부터 진행 중이거나 예정된 행사만 보여준다(eventEndDate 없이 시작일만 넘기면
-// TourAPI가 "eventStartDate 이후 종료되는" 행사를 돌려준다).
+// eventStartDate를 오늘이 아니라 2주 전으로 넘겨서 "최근에 막 끝난(마감)" 행사까지 같이 받아오고,
+// 진행중/예정/마감 상태는 여기서 직접 계산해 붙인다(TourAPI가 상태 자체를 주진 않음).
 suspend fun fetchFestivals(): List<FinishHubPlace> {
-    val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.KOREA).format(java.util.Date())
+    val queryFrom = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_MONTH, -14) }.time
+    val queryFromYmd = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.KOREA).format(queryFrom)
     val items = runCatching {
-        TourApiClient.api.searchFestivals(eventStartDate = today).response.body.items?.item ?: emptyList()
+        TourApiClient.api.searchFestivals(eventStartDate = queryFromYmd).response.body.items?.item ?: emptyList()
     }.getOrDefault(emptyList())
 
-    return items.map { f ->
+    val places = items.map { f ->
         FinishHubPlace(
             title = f.title ?: "-",
             addr = f.addr1 ?: "",
@@ -179,19 +217,18 @@ suspend fun fetchFestivals(): List<FinishHubPlace> {
             contentId = f.contentId,
             lat = f.mapY?.toDoubleOrNull(),
             lng = f.mapX?.toDoubleOrNull(),
-            eventPeriod = festivalPeriodLabel(f.eventStartDate, f.eventEndDate)
+            eventStartDate = f.eventStartDate,
+            eventEndDate = f.eventEndDate,
+            imageUrl = f.firstImage?.takeIf { it.isNotBlank() }
         )
     }
-}
-
-private fun festivalPeriodLabel(startYmd: String?, endYmd: String?): String? {
-    fun format(ymd: String?): String? {
-        if (ymd == null || ymd.length != 8) return null
-        return "${ymd.substring(4, 6).toInt()}.${ymd.substring(6, 8).toInt()}"
-    }
-    val start = format(startYmd) ?: return null
-    val end = format(endYmd)
-    return if (end == null || end == start) start else "$start ~ $end"
+    // 진행중 → 예정 → 마감 순으로, 상태가 같으면 시작일이 빠른 순으로 보여준다.
+    return places.sortedWith(
+        compareBy(
+            { place -> when (place.festivalStatus()) { FestivalStatus.ONGOING -> 0; FestivalStatus.UPCOMING -> 1; else -> 2 } },
+            { it.eventStartDate ?: "" }
+        )
+    )
 }
 
 // ════════════════════════════════════════════════════════
@@ -847,18 +884,34 @@ private fun PlaceListCard(place: FinishHubPlace, onClick: () -> Unit) {
         val hub = findHub(place.finishHubId)
         val meters = place.distanceMeters(hub)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(70.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.35f))
-            )
+            val thumbUrl = place.imageUrl
+            if (thumbUrl != null) {
+                coil.compose.AsyncImage(
+                    model = thumbUrl,
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(70.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.2f))
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(70.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.35f))
+                )
+            }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(place.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                 Spacer(Modifier.height(6.dp))
+                val festivalStatus = place.festivalStatus()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(place.category.accent).padding(horizontal = 8.dp, vertical = 2.dp)) {
                         Text(place.category.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     }
-                    if (place.eventPeriod == null) {
+                    if (festivalStatus != null) {
+                        Spacer(Modifier.width(6.dp))
+                        Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(festivalStatus.color).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                            Text(festivalStatus.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                        }
+                    } else {
                         meters?.let {
                             Spacer(Modifier.width(8.dp))
                             Text("${it.toInt()}m", fontSize = 11.sp, color = RunGray)
@@ -867,7 +920,7 @@ private fun PlaceListCard(place: FinishHubPlace, onClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    place.eventPeriod?.let { "$it 진행" }
+                    place.festivalPeriodLabel()?.let { "$it 진행" }
                         ?: meters?.let { "도보 ${walkingMinutes(it).toInt()} 분" }
                         ?: (if (place.isCurated) "RunQ가 골라둔 스팟" else place.addr.ifBlank { "코스 근처 스팟" }),
                     fontSize = 11.sp, color = RunGray
@@ -998,7 +1051,7 @@ fun PlacePickCard(no: Int, neighborhood: String, place: FinishHubPlace, onClick:
             fontSize = 11.sp, fontWeight = FontWeight.Bold, color = place.category.accent
         )
         Spacer(Modifier.height(8.dp))
-        PlacePhotoPlaceholder(place.category.accent, 150)
+        PlacePhotoPlaceholder(place.category.accent, 150, place.imageUrl)
         Spacer(Modifier.height(10.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1016,14 +1069,25 @@ fun PlacePickCard(no: Int, neighborhood: String, place: FinishHubPlace, onClick:
     }
 }
 
+// imageUrl이 있으면(TourAPI firstimage 또는 큐레이션 runq_image_url/tourapi_image_url) 실제 사진을,
+// 없으면 기존처럼 카테고리 색 자리표시 박스를 보여준다.
 @Composable
-fun PlacePhotoPlaceholder(accent: Color, heightDp: Int) {
-    Box(
-        modifier = Modifier.fillMaxWidth().height(heightDp.dp).clip(RoundedCornerShape(16.dp))
-            .background(accent.copy(alpha = 0.25f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("PHOTO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack.copy(alpha = 0.4f))
+fun PlacePhotoPlaceholder(accent: Color, heightDp: Int, imageUrl: String? = null) {
+    if (imageUrl != null) {
+        coil.compose.AsyncImage(
+            model = imageUrl,
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().height(heightDp.dp).clip(RoundedCornerShape(16.dp)).background(accent.copy(alpha = 0.15f))
+        )
+    } else {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(heightDp.dp).clip(RoundedCornerShape(16.dp))
+                .background(accent.copy(alpha = 0.25f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("PHOTO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack.copy(alpha = 0.4f))
+        }
     }
 }
 
@@ -1065,18 +1129,25 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
             Text("장소 상세", fontSize = 20.sp, fontWeight = FontWeight.Black, color = RunBlack)
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            if (place.isCurated) "RunQ Pick" else place.category.label,
-            fontSize = 13.sp, color = place.category.accent, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 48.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 48.dp)) {
+            Text(
+                if (place.isCurated) "RunQ Pick" else place.category.label,
+                fontSize = 13.sp, color = place.category.accent, fontWeight = FontWeight.Bold
+            )
+            place.festivalStatus()?.let { status ->
+                Spacer(Modifier.width(6.dp))
+                Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(status.color).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                    Text(status.label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                }
+            }
+        }
         Spacer(Modifier.height(16.dp))
-        PlacePhotoPlaceholder(place.category.accent, 200)
+        PlacePhotoPlaceholder(place.category.accent, 200, detail?.firstImage?.takeIf { it.isNotBlank() } ?: place.imageUrl)
         Spacer(Modifier.height(20.dp))
         Text(place.title, fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Spacer(Modifier.height(4.dp))
         Text(
-            place.eventPeriod?.let { "$it 진행" }
+            place.festivalPeriodLabel()?.let { "$it 진행" }
                 ?: listOfNotNull(hubName, place.distanceLabel(hub)?.let { "Finish Hub에서 $it" }).joinToString(" · ")
                     .ifBlank { place.category.label },
             fontSize = 13.sp, color = RunGray

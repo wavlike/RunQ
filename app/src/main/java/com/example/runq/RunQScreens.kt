@@ -98,20 +98,12 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("RunQ", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunBlack)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(
-                            modifier = Modifier.size(36.dp).clip(CircleShape).background(RunWhite.copy(alpha = 0.7f))
-                                .clickable { onOpenNotifications() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Notifications, contentDescription = "알림", tint = RunBlack, modifier = Modifier.size(18.dp))
-                        }
-                        Box(
-                            modifier = Modifier.size(36.dp).clip(CircleShape).background(RunWhite.copy(alpha = 0.7f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Menu, contentDescription = "메뉴", tint = RunBlack, modifier = Modifier.size(20.dp))
-                        }
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(RunWhite.copy(alpha = 0.7f))
+                            .clickable { onOpenNotifications() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Notifications, contentDescription = "알림", tint = RunBlack, modifier = Modifier.size(18.dp))
                     }
                 }
                 Spacer(Modifier.height(28.dp))

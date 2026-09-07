@@ -157,7 +157,8 @@ object RunQData {
                 isFeatured = p.is_featured ?: false,
                 displayOrder = p.display_order ?: 999,
                 status = parseContentStatus(p.status),
-                isCurated = true
+                isCurated = true,
+                imageUrl = p.runq_image_url?.takeIf { it.isNotBlank() } ?: p.tourapi_image_url?.takeIf { it.isNotBlank() }
             )
         }
     }
