@@ -202,13 +202,11 @@ fun NavTabItem(tab: Tab, selected: Boolean, onClick: () -> Unit) {
 
 // ════════════════════════════════════════════════════════
 // 코스 탭 내부 흐름:
-// 탐색(목록) → 조건 → 결과 → 상세 → Run Ready → Running → Complete
+// 탐색(목록) → 상세 → Run Ready → Running → Complete
 //   → Finish Hub(EAT/CAFE/SEE) → Place Detail
 // ════════════════════════════════════════════════════════
 sealed class CourseStep {
     object Browse : CourseStep() // 전체 목록 보기 (필터/정렬 포함)
-    object Condition : CourseStep() // 맞춤 추천 조건 선택
-    data class Result(val courses: List<Course>) : CourseStep()
     data class Detail(val course: Course, val from: CourseStep) : CourseStep()
     data class RunReady(val course: Course, val from: CourseStep) : CourseStep()
     data class Running(val course: Course) : CourseStep()
@@ -231,17 +229,7 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
 
     when (val s = step) {
         is CourseStep.Browse -> BrowseScreen(
-            onCourseClick = { step = CourseStep.Detail(it, CourseStep.Browse) },
-            onNavigateToRecommend = { step = CourseStep.Condition }
-        )
-        is CourseStep.Condition -> ConditionScreen(
-            onBack = { step = CourseStep.Browse },
-            onRecommend = { sc, di, df -> step = CourseStep.Result(filterCourses(sc, di, df)) }
-        )
-        is CourseStep.Result -> ResultScreen(
-            courses = s.courses,
-            onCourseClick = { step = CourseStep.Detail(it, s) },
-            onBack = { step = CourseStep.Condition }
+            onCourseClick = { step = CourseStep.Detail(it, CourseStep.Browse) }
         )
         is CourseStep.Detail -> DetailScreen(
             course = s.course,
@@ -290,7 +278,7 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
 private val distanceBucketOptions = listOf("전체", "짧은코스", "5K", "중거리", "10K", "장거리")
 
 @Composable
-fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> Unit) {
+fun BrowseScreen(onCourseClick: (Course) -> Unit) {
     var regionFilter by remember { mutableStateOf("전체 지역") }
     var distanceFilter by remember { mutableStateOf("전체") }
     var difficultyFilter by remember { mutableStateOf("전체") }
@@ -329,18 +317,6 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> U
         ) {
             Text("추천순 · ${displayedCourses.size}개 코스", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
             Text("한눈에 비교하기", fontSize = 11.sp, color = RunGray)
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // 맞춤 조건 추천(Condition/Result 플로우)은 Figma엔 없지만 기존 기능이라 톤만 맞춰 유지
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable { onNavigateToRecommend() },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("조건으로 맞춤 추천 받기", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunPurple)
-            Icon(Icons.Default.ChevronRight, null, tint = RunPurple, modifier = Modifier.size(18.dp))
         }
 
         Spacer(Modifier.height(12.dp))
@@ -465,14 +441,6 @@ private fun CourseThumbnail(label: String, color: Color) {
 }
 
 
-fun filterCourses(scenery: String, distance: String, difficulty: String): List<Course> {
-    return RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.filter { c ->
-        (scenery == "상관없음" || c.sceneryLabel() == scenery) &&
-                (difficulty == "상관없음" || c.difficulty.label == difficulty) &&
-                (distance == "상관없음" || c.matchesDistanceBucket(distance))
-    }
-}
-
 // ══════════════════════════════════════════════════
 // 스플래시: 로고 없이 배경만
 // ══════════════════════════════════════════════════
@@ -516,133 +484,6 @@ fun SplashScreen(onDone: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Text("Find your route.", fontSize = 15.sp, color = RunGray)
         }
-    }
-}
-
-// ══════════════════════════════════════════════════
-// 코스: 조건 선택
-// ══════════════════════════════════════════════════
-@Composable
-fun ConditionScreen(onBack: () -> Unit, onRecommend: (String, String, String) -> Unit) {
-    var scenery by remember { mutableStateOf("상관없음") }
-    var distance by remember { mutableStateOf("상관없음") }
-    var difficulty by remember { mutableStateOf("상관없음") }
-
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("Your Preference", fontSize = 28.sp, fontWeight = FontWeight.Black, color = RunBlack)
-        Text("당신에게 딱 맞는 러닝 코스를 큐레이션해드려요", fontSize = 14.sp, color = RunGray)
-        Spacer(Modifier.height(28.dp))
-        OptionRow("경관", listOf("상관없음", "바다", "호수", "강변", "문화", "숲길"), scenery) { scenery = it }
-        Spacer(Modifier.height(20.dp))
-        OptionRow("거리", listOf("상관없음", "짧은코스", "5K", "중거리", "10K", "장거리"), distance) { distance = it }
-        Spacer(Modifier.height(20.dp))
-        OptionRow("난이도", listOf("상관없음", "쉬움", "보통", "어려움"), difficulty) { difficulty = it }
-        Spacer(Modifier.weight(1f))
-        Button(
-            onClick = { onRecommend(scenery, distance, difficulty) },
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
-        ) { Text("추천 코스 받기", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.height(8.dp))
-    }
-}
-
-@Composable
-fun OptionRow(label: String, options: List<String>, selected: String, onSelect: (String) -> Unit) {
-    Column {
-        Text(label, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = RunBlack)
-        Spacer(Modifier.height(12.dp))
-        options.chunked(3).forEach { rowOptions ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                rowOptions.forEach { option ->
-                    val isSel = option == selected
-                    Box(
-                        modifier = Modifier.padding(end = 10.dp, bottom = 10.dp)
-                            .clip(RoundedCornerShape(12.dp)) // 더 현대적인 라운딩
-                            .background(if (isSel) RunBlack else RunBgGray)
-                            .clickable { onSelect(option) }
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
-                    ) {
-                        Text(option, fontSize = 14.sp,
-                            color = if (isSel) RunWhite else RunBlack,
-                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ══════════════════════════════════════════════════
-// 코스: 추천 결과
-// ══════════════════════════════════════════════════
-@Composable
-fun ResultScreen(courses: List<Course>, onCourseClick: (Course) -> Unit, onBack: () -> Unit) {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Spacer(Modifier.height(16.dp))
-        Text("추천 코스", fontSize = 26.sp, fontWeight = FontWeight.Black, color = RunBlack)
-        Text("${courses.size}개의 코스를 찾았어요", fontSize = 14.sp, color = RunGray)
-        Spacer(Modifier.height(20.dp))
-        if (courses.isEmpty()) {
-            EmptyStateView("🔍", "조건에 맞는 코스가 없어요", "조건을 바꿔보세요.", Modifier.padding(top = 24.dp))
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                items(courses) { course -> CourseCard(course) { onCourseClick(course) } }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.5.dp, RunBlack),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)
-        ) { Text("조건 다시 선택", fontWeight = FontWeight.Bold) }
-    }
-}
-
-@Composable
-fun CourseCard(course: Course, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp).clickable { onClick() },
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = RunBlack)
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(course.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunWhite)
-                    if (course.status == ContentStatus.DRAFT) {
-                        Spacer(Modifier.width(6.dp))
-                        DraftBadge()
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, null, tint = RunLime, modifier = Modifier.size(16.dp))
-                    Text(" ${course.rating}", color = RunWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Text(course.distanceLabel(), fontSize = 34.sp, fontWeight = FontWeight.Black, color = RunLime)
-            Spacer(Modifier.height(10.dp))
-            Row {
-                Badge("#${course.sceneryLabel()}", RunPurple)
-                Spacer(Modifier.width(6.dp))
-                Badge("난이도 ${course.difficulty.label}", RunGray)
-            }
-        }
-    }
-}
-
-@Composable
-fun Badge(text: String, color: Color) {
-    Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(color).padding(horizontal = 10.dp, vertical = 4.dp)) {
-        Text(text, fontSize = 12.sp, color = RunBlack, fontWeight = FontWeight.Bold)
     }
 }
 
