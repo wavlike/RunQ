@@ -1,5 +1,8 @@
 package com.example.runq
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +26,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -184,7 +188,7 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
                 .background(Brush.radialGradient(listOf(RunLavender.copy(alpha = 0.5f), Color.Transparent)), CircleShape)
         )
 
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(56.dp))
             Box(
                 modifier = Modifier.size(38.dp).clip(CircleShape).background(RunWhite)
@@ -516,6 +520,26 @@ fun CompleteScreen(
     }
 }
 
+// 코스 완주(Complete)·코스 상세(EAT/CAFE/SEE)에서 "Place 탭으로 바로 이동"할 때
+// 어떤 Hub/카테고리를 보여줘야 하는지 전달하는 1회성 요청함. 화면 전환(탭 전환) 사이에만
+// 잠깐 살아있으면 되므로 영구 저장(LocalStore)이 아니라 메모리 객체로 둔다.
+object PlaceTabRequest {
+    private var pendingHubId: String? = null
+    private var pendingCategory: PlaceCategory? = null
+
+    fun request(hubId: String?, category: PlaceCategory? = null) {
+        pendingHubId = hubId
+        pendingCategory = category
+    }
+
+    fun consume(): Pair<String?, PlaceCategory?> {
+        val result = pendingHubId to pendingCategory
+        pendingHubId = null
+        pendingCategory = null
+        return result
+    }
+}
+
 // ════════════════════════════════════════════════════════
 // Place 탭 (Hub 자체를 순회) — "30 Places/Home.png"
 // ════════════════════════════════════════════════════════
@@ -554,8 +578,11 @@ fun PlaceFlow() {
 @Composable
 fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll: (FinishHub, PlaceCategory) -> Unit) {
     val activeHubs = remember { RunQData.finishHubs.filter { it.status != ContentStatus.HIDDEN } }
-    var currentHub by remember { mutableStateOf(activeHubs.firstOrNull()) }
-    var category by remember { mutableStateOf<PlaceCategory?>(null) }
+    val pendingRequest = remember { PlaceTabRequest.consume() }
+    var currentHub by remember {
+        mutableStateOf(activeHubs.firstOrNull { it.id == pendingRequest.first } ?: activeHubs.firstOrNull())
+    }
+    var category by remember { mutableStateOf(pendingRequest.second) }
     var sortByDistance by remember { mutableStateOf(true) }
     var hubMenuExpanded by remember { mutableStateOf(false) }
 
@@ -881,8 +908,10 @@ fun PlacePhotoPlaceholder(accent: Color, heightDp: Int) {
 // ════════════════════════════════════════════════════════
 @Composable
 fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: FinishHub? = null, onBack: () -> Unit) {
+    val context = LocalContext.current
     var detail by remember { mutableStateOf<DetailCommonItem?>(null) }
     var loading by remember { mutableStateOf(place.contentId != null) }
+    var kakaoInfo by remember { mutableStateOf<KakaoPlaceLookup?>(null) }
 
     LaunchedEffect(place.contentId) {
         val id = place.contentId
@@ -891,6 +920,13 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
                 TourApiClient.api.getDetailCommon(contentId = id).response.body.items?.item?.firstOrNull()
             }.getOrNull()
             loading = false
+        }
+    }
+
+    // 엑셀에 주소/좌표가 비어있는 RunQ 큐레이션 장소만 Kakao Local 검색으로 보완한다.
+    LaunchedEffect(place.id) {
+        if (place.addr.isBlank() || place.lat == null || place.lng == null) {
+            kakaoInfo = fetchKakaoPlaceInfo(place.title)
         }
     }
 
@@ -932,13 +968,39 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
         }
         Spacer(Modifier.height(20.dp))
 
-        PlaceInfoRow("주소", (detail?.addr1 ?: place.addr).ifBlank { "주소 정보 준비중" })
+        PlaceInfoRow("주소", (detail?.addr1 ?: place.addr).ifBlank { kakaoInfo?.address ?: "주소 정보 준비중" })
         Spacer(Modifier.height(10.dp))
-        PlaceInfoRow("운영 정보", "영업시간 / 휴무 / 홈페이지")
+        PlaceInfoRow("전화", kakaoInfo?.phone ?: "정보 없음")
         Spacer(Modifier.height(20.dp))
 
+        val kakaoPlaceUrl = kakaoInfo?.placeUrl
+        if (kakaoPlaceUrl != null) {
+            Text(
+                "카카오맵에서 영업시간·리뷰 보기 →", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunPurple,
+                modifier = Modifier.clickable {
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(kakaoPlaceUrl))) }
+                    catch (e: ActivityNotFoundException) { /* 브라우저가 없는 기기 — 조용히 무시 */ }
+                }
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
         Button(
-            onClick = { /* Kakao Map 연동 예정 */ },
+            onClick = {
+                val lat = kakaoInfo?.lat ?: place.lat ?: hub?.resolvedLat
+                val lng = kakaoInfo?.lng ?: place.lng ?: hub?.resolvedLng
+                val label = Uri.encode(place.title)
+                val uri = if (lat != null && lng != null) {
+                    Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)")
+                } else {
+                    Uri.parse("geo:0,0?q=$label")
+                }
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                } catch (e: ActivityNotFoundException) {
+                    // 지도 앱이 없는 기기 — 조용히 무시(스낵바 등은 디자인 확정 전까지 보류)
+                }
+            },
             modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(27.dp),
             colors = ButtonDefaults.buttonColors(containerColor = RunBlack, contentColor = RunWhite)

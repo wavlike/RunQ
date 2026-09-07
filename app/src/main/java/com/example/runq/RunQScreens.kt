@@ -478,7 +478,7 @@ fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit) {
                     if (query.isEmpty()) Text("코스, 거리, 장소를 검색해보세요", fontSize = 14.sp, color = RunGray)
                     androidx.compose.foundation.text.BasicTextField(
                         value = query, onValueChange = { query = it },
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = RunBlack),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = RunBlack, fontFamily = com.example.runq.ui.theme.NotoSansKR),
                         singleLine = true,
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(RunBlack)
                     )

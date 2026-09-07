@@ -549,7 +549,7 @@ fun MyEditProfileScreen(onBack: () -> Unit) {
                 Box(modifier = Modifier.weight(1f)) {
                     androidx.compose.foundation.text.BasicTextField(
                         value = nickname, onValueChange = { if (it.length <= 10) nickname = it },
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = RunBlack),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, color = RunBlack, fontFamily = com.example.runq.ui.theme.NotoSansKR),
                         singleLine = true,
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(RunBlack)
                     )

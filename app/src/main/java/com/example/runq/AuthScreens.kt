@@ -37,7 +37,8 @@ import androidx.compose.ui.unit.sp
 // Figma "01~05 Auth": Entry / Sign Up / Log In / Password Recovery / Terms & Privacy.
 // 이 앱엔 아직 실제 서버 계정 시스템이 없어서(로그인 성공 시 그냥 Main으로 진입),
 // 이 화면들은 폼 UI와 화면 흐름만 실제로 동작하고 인증 자체는 로컬 목업이다.
-// 소셜 로그인(Google/네이버/카카오) 버튼도 같은 이유로 시각적으로만 존재한다.
+// (SNS 로그인은 실제 OAuth 연동 없이는 동작을 흉내낼 수 없어 뺐다 — 버튼만 있고 아무 것도
+// 안 되는 상태로 두지 않기로 함.)
 // ════════════════════════════════════════════════════════
 
 sealed class AuthStep {
@@ -171,43 +172,12 @@ private fun BasicTextFieldWithPlaceholder(
         if (value.isEmpty()) Text(placeholder, fontSize = 14.sp, color = RunGray)
         androidx.compose.foundation.text.BasicTextField(
             value = value, onValueChange = onValueChange,
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = RunBlack),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = RunBlack, fontFamily = com.example.runq.ui.theme.NotoSansKR),
             singleLine = true,
             visualTransformation = visualTransformation,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(RunBlack)
         )
-    }
-}
-
-@Composable
-private fun SocialRow() {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        SocialCircle("G", Color(0xFF4285F4), RunWhite, "Google")
-        SocialCircle("N", RunWhite, Color(0xFF2DB400), "네이버")
-        SocialCircle("K", RunBlack, Color(0xFFF7E017), "카카오")
-    }
-}
-
-@Composable
-private fun SocialCircle(letter: String, textColor: Color, bg: Color, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier.size(60.dp).clip(CircleShape).background(bg).border(1.dp, RunBorderGray, CircleShape)
-                .clickable { /* 실제 SNS 로그인 연동 전 — 시각적 자리표시 */ },
-            contentAlignment = Alignment.Center
-        ) { Text(letter, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = textColor) }
-        Spacer(Modifier.height(6.dp))
-        Text(label, fontSize = 11.sp, color = RunGray)
-    }
-}
-
-@Composable
-private fun OrDivider(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(RunBorderGray))
-        Text(text, fontSize = 12.sp, color = RunGray, modifier = Modifier.padding(horizontal = 12.dp))
-        Box(modifier = Modifier.weight(1f).height(1.dp).background(RunBorderGray))
     }
 }
 
@@ -256,10 +226,6 @@ fun AuthSignUpScreen(onBack: () -> Unit, onCreateAccount: () -> Unit, onGoToLogi
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
             ) { Text("가입하기", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-            Spacer(Modifier.height(20.dp))
-            OrDivider("또는 SNS로 가입")
-            Spacer(Modifier.height(16.dp))
-            SocialRow()
             Spacer(Modifier.height(24.dp))
             Row {
                 Text("이미 계정이 있나요? ", fontSize = 13.sp, color = RunGray)
@@ -306,10 +272,6 @@ fun AuthLogInScreen(onBack: () -> Unit, onLogin: () -> Unit, onForgotPassword: (
                 shape = RoundedCornerShape(20.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
             ) { Text("로그인", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
-            Spacer(Modifier.height(20.dp))
-            OrDivider("또는 SNS로 로그인")
-            Spacer(Modifier.height(16.dp))
-            SocialRow()
             Spacer(Modifier.height(24.dp))
             Row {
                 Text("아직 RunQ 계정이 없나요? ", fontSize = 13.sp, color = RunGray)

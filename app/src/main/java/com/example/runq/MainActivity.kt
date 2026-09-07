@@ -145,7 +145,13 @@ fun MainWithTabs(onLogout: () -> Unit) {
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when (tab) {
                 Tab.HOME -> HomeFlow(onFindCourses = { tab = Tab.COURSE })
-                Tab.COURSE -> CourseFlow(onSectionHint = { courseSectionTab = it })
+                Tab.COURSE -> CourseFlow(
+                    onSectionHint = { courseSectionTab = it },
+                    onOpenFinishHub = { course, category ->
+                        PlaceTabRequest.request(course.finishHubIds.firstOrNull(), category)
+                        tab = Tab.PLACE
+                    }
+                )
                 Tab.RUN -> RunningScreen()
                 Tab.PLACE -> PlaceFlow()
                 Tab.MY -> MyFlow(onLogout = onLogout)
@@ -203,7 +209,7 @@ fun NavTabItem(tab: Tab, selected: Boolean, onClick: () -> Unit) {
 // ════════════════════════════════════════════════════════
 // 코스 탭 내부 흐름:
 // 탐색(목록) → 상세 → Run Ready → Running → Complete
-//   → Finish Hub(EAT/CAFE/SEE) → Place Detail
+//   → (완주 후 EAT/CAFE/SEE는 별도 화면 대신 Place 탭으로 바로 이동)
 // ════════════════════════════════════════════════════════
 sealed class CourseStep {
     object Browse : CourseStep() // 전체 목록 보기 (필터/정렬 포함)
@@ -211,19 +217,16 @@ sealed class CourseStep {
     data class RunReady(val course: Course, val from: CourseStep) : CourseStep()
     data class Running(val course: Course) : CourseStep()
     data class Complete(val course: Course, val distanceKm: Double, val elapsedSeconds: Int) : CourseStep()
-    data class FinishHubStep(val course: Course, val initialCategory: PlaceCategory = PlaceCategory.EAT) : CourseStep()
-    data class PlaceDetailStep(val course: Course, val place: FinishHubPlace) : CourseStep()
 }
 
-// 화면 성격상 하단 탭에서 어디를 켜야 하는지 (Course/Run/Place)
+// 화면 성격상 하단 탭에서 어디를 켜야 하는지 (Course/Run)
 private fun CourseStep.sectionTab(): Tab = when (this) {
     is CourseStep.RunReady, is CourseStep.Running, is CourseStep.Complete -> Tab.RUN
-    is CourseStep.FinishHubStep, is CourseStep.PlaceDetailStep -> Tab.PLACE
     else -> Tab.COURSE
 }
 
 @Composable
-fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
+fun CourseFlow(onSectionHint: (Tab) -> Unit = {}, onOpenFinishHub: (Course, PlaceCategory) -> Unit = { _, _ -> }) {
     var step by remember { mutableStateOf<CourseStep>(CourseStep.Browse) }
     LaunchedEffect(step) { onSectionHint(step.sectionTab()) }
 
@@ -235,7 +238,7 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
             course = s.course,
             onBack = { step = s.from },
             onStart = { step = CourseStep.RunReady(s.course, s) },
-            onOpenCategory = { category -> step = CourseStep.FinishHubStep(s.course, category) }
+            onOpenCategory = { category -> onOpenFinishHub(s.course, category) }
         )
         is CourseStep.RunReady -> RunReadyScreen(
             course = s.course,
@@ -250,27 +253,8 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}) {
             course = s.course,
             distanceKm = s.distanceKm,
             elapsedSeconds = s.elapsedSeconds,
-            onCategoryClick = { category -> step = CourseStep.FinishHubStep(s.course, category) }
+            onCategoryClick = { category -> onOpenFinishHub(s.course, category) }
         )
-        is CourseStep.FinishHubStep -> {
-            val hub = s.course.finishHubIds.firstOrNull()?.let { findHub(it) }
-            HubPlacesScreen(
-                hub = hub,
-                contextLabel = "러닝 후 · ${hub?.name ?: s.course.name}",
-                initialCategory = s.initialCategory,
-                onBack = { step = CourseStep.Browse },
-                onPlaceClick = { place -> step = CourseStep.PlaceDetailStep(s.course, place) }
-            )
-        }
-        is CourseStep.PlaceDetailStep -> {
-            val hub = s.course.finishHubIds.firstOrNull()?.let { findHub(it) }
-            PlaceDetailScreen(
-                place = s.place,
-                hubName = hub?.name,
-                hub = hub,
-                onBack = { step = CourseStep.FinishHubStep(s.course) }
-            )
-        }
     }
 }
 
@@ -310,14 +294,7 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit) {
 
         Spacer(Modifier.height(18.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("추천순 · ${displayedCourses.size}개 코스", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
-            Text("한눈에 비교하기", fontSize = 11.sp, color = RunGray)
-        }
+        Text("추천순 · ${displayedCourses.size}개 코스", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
 
         Spacer(Modifier.height(12.dp))
 

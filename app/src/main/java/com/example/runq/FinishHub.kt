@@ -58,7 +58,7 @@ fun Course.timeLabel(): String = when {
 fun Course.sceneryLabel(): String = sceneryType?.takeIf { it.isNotBlank() } ?: terrain.label
 fun Course.locationLabel(): String = location?.takeIf { it.isNotBlank() } ?: region
 fun Course.reasonText(): String = headline?.takeIf { it.isNotBlank() }
-    ?: "완주 후 이어지는 EAT · CAFE · SEE까지 묶어서 준비한 RunQ 코스예요."
+    ?: "러닝 끝, 즐거움 시작.\nEAT · CAFE · SEE로 이어가요."
 
 // 코스별 기상청 격자(nx, ny). 엑셀에 값이 있으면 그대로 쓰고, 없으면 시작/종료 좌표로
 // 즉석 계산한다(계산값을 콘텐츠 JSON에 되써넣지는 않음 — 화면 표시용 파생값일 뿐).
