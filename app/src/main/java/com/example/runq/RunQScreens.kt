@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 // ════════════════════════════════════════════════════════
 // 홈 화면: Figma "10 Home/Main" 기준 — 크림 배경 + 좌상단 라임/우상단 라벤더 ambient glow +
@@ -221,7 +227,7 @@ fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
 fun RunningScreen() {
     val context = LocalContext.current
     var isRunning by remember { mutableStateOf(false) }
-    var distance by remember { mutableStateOf(0.0) }
+    var totalDistanceKm by remember { mutableStateOf(0.0) }
     var elapsedSeconds by remember { mutableStateOf(0) }
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -229,57 +235,69 @@ fun RunningScreen() {
         )
     }
     var hasFix by remember { mutableStateOf(false) }
-    // 경포호 기본 위치 — 첫 GPS 픽스를 받기 전까지의 기본 지도 중심.
-    var currentLocation by remember { mutableStateOf(RoutePoint(37.7946, 128.9022)) }
+    
+    // 현재 코스 정보 (Saved탭에서 "다음 러닝으로 설정"한 코스가 있으면 로드)
+    val currentCourse = remember {
+        SavedItemsStore.nextCourseId?.let { id -> RunQData.courses.find { it.id == id } }
+    }
+    val routePoints = currentCourse?.routePoints ?: emptyList()
+
+    // 진행 거리 (코스 위에서의 누적 거리) / 남은 거리
+    var progressKm by remember { mutableStateOf(0.0) }
+    val remainingKm = remember(currentCourse, progressKm) {
+        val total = currentCourse?.distanceKm ?: 0.0
+        (total - progressKm).coerceAtLeast(0.0)
+    }
+
+    var currentLocation by remember { mutableStateOf(currentCourse?.startPoint() ?: RoutePoint(37.7946, 128.9022)) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         hasLocationPermission = isGranted
     }
 
-    // 권한이 없으면 화면 진입 시 바로 요청 — 예전에는 버튼을 눌러야만 요청돼서
-    // "GPS가 안 잡힌다"는 착시가 생겼다.
     LaunchedEffect(Unit) {
         if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
-    // 실시간 위치 갱신 — LocationManager.requestLocationUpdates로 지속 추적하고,
-    // 러닝 중일 때만 이동 거리를 haversine으로 누적한다.
-    DisposableEffect(hasLocationPermission) {
-        var listener: android.location.LocationListener? = null
-        var lm: android.location.LocationManager? = null
-        if (hasLocationPermission) {
-            runCatching {
-                val manager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                lm = manager
-                manager.getProviders(true).mapNotNull { manager.getLastKnownLocation(it) }
-                    .maxByOrNull { it.time }?.let {
-                        currentLocation = RoutePoint(it.latitude, it.longitude)
-                        hasFix = true
-                    }
-                val provider = when {
-                    manager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) -> android.location.LocationManager.GPS_PROVIDER
-                    manager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) -> android.location.LocationManager.NETWORK_PROVIDER
-                    else -> null
+    // FusedLocationProviderClient 연동
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    
+    DisposableEffect(hasLocationPermission, isRunning) {
+        if (!hasLocationPermission || !isRunning) return@DisposableEffect onDispose {}
+
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+            .setMinUpdateDistanceMeters(3f)
+            .build()
+
+        val locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val lastLocation = result.lastLocation ?: return
+                val newPoint = RoutePoint(lastLocation.latitude, lastLocation.longitude)
+                
+                if (hasFix) {
+                    val d = haversineMeters(currentLocation.lat, currentLocation.lng, newPoint.lat, newPoint.lng) / 1000.0
+                    totalDistanceKm += d
                 }
-                if (provider != null) {
-                    val l = android.location.LocationListener { loc ->
-                        if (isRunning) {
-                            distance += haversineMeters(currentLocation.lat, currentLocation.lng, loc.latitude, loc.longitude) / 1000.0
-                        }
-                        currentLocation = RoutePoint(loc.latitude, loc.longitude)
-                        hasFix = true
-                    }
-                    listener = l
-                    manager.requestLocationUpdates(provider, 2000L, 3f, l)
+                
+                currentLocation = newPoint
+                hasFix = true
+
+                if (routePoints.isNotEmpty()) {
+                    progressKm = distanceAlongRouteToClosestPoint(routePoints, newPoint)
                 }
             }
         }
+
+        try {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, context.mainLooper)
+        } catch (e: SecurityException) { }
+
         onDispose {
-            listener?.let { l -> runCatching { lm?.removeUpdates(l) } }
+            fusedLocationClient.removeLocationUpdates(locationCallback)
         }
     }
 
-    // 경과 시간 — 실제 이동 거리(distance)는 위 위치 리스너에서 갱신.
+    // 경과 시간
     LaunchedEffect(isRunning) {
         while (isRunning) {
             kotlinx.coroutines.delay(1000)
@@ -287,27 +305,24 @@ fun RunningScreen() {
         }
     }
 
-    val paceLabel = remember(distance, elapsedSeconds) {
-        if (distance < 0.01) "0'00\"" else {
-            val paceSec = (elapsedSeconds / distance).toInt()
+    val paceLabel = remember(totalDistanceKm, elapsedSeconds) {
+        if (totalDistanceKm < 0.01) "0'00\"" else {
+            val paceSec = (elapsedSeconds / totalDistanceKm).toInt()
             "${paceSec / 60}'${(paceSec % 60).toString().padStart(2, '0')}\""
         }
     }
     val durationLabel = remember(elapsedSeconds) {
         val m = elapsedSeconds / 60; val s = elapsedSeconds % 60
-        "%02d:%02d".format(m, s)
+        String.format(java.util.Locale.US, "%02d:%02d", m, s)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
-        // 지도 영역 — start/finish 없이 currentLocation만 넘겨서 위치가 갱신될 때마다
-        // 라벨만 이동시킨다(예전엔 currentLocation을 start/finish로도 같이 넘겨서 매번
-        // 지도 전체를 다시 그리는 바람에 위치 라벨이 사라지고 다시 안 잡히는 버그가 있었음).
         if (hasLocationPermission) {
             KakaoRouteMap(
                 modifier = Modifier.fillMaxSize(),
-                routePoints = emptyList(),
-                startPoint = null,
-                finishPoint = null,
+                routePoints = routePoints,
+                startPoint = currentCourse?.startPoint(),
+                finishPoint = currentCourse?.finishPoint(),
                 currentLocation = currentLocation
             )
         } else {
@@ -322,7 +337,7 @@ fun RunningScreen() {
             }
         }
 
-        // 상단 오버레이 (반투명 어둡게)
+        // 상단 오버레이
         Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(RunWhite.copy(alpha = 0.8f), Color.Transparent, Color.Transparent))))
 
         Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
@@ -342,8 +357,11 @@ fun RunningScreen() {
             Spacer(Modifier.height(40.dp))
 
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(String.format("%.2f", distance), fontSize = 80.sp, fontWeight = FontWeight.Black, color = RunBlack)
-                Text("Distance (Km)", fontSize = 14.sp, color = RunGray)
+                Text(String.format(java.util.Locale.US, "%.2f", if (routePoints.isNotEmpty()) progressKm else totalDistanceKm), fontSize = 80.sp, fontWeight = FontWeight.Black, color = RunBlack)
+                Text(if (routePoints.isNotEmpty()) "Progress (Km)" else "Distance (Km)", fontSize = 14.sp, color = RunGray)
+                if (routePoints.isNotEmpty()) {
+                    Text(String.format(java.util.Locale.US, "남은 거리: %.2f km", remainingKm), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunPurple)
+                }
             }
 
             Spacer(Modifier.height(40.dp))
@@ -351,7 +369,7 @@ fun RunningScreen() {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 MetricItem(paceLabel, "Avg Pace")
                 MetricItem(durationLabel, "Duration")
-                MetricItem("0 kcal", "Calories")
+                MetricItem("${(totalDistanceKm * 60).toInt()} kcal", "Calories")
             }
 
             Spacer(Modifier.weight(1f))
@@ -362,8 +380,6 @@ fun RunningScreen() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    // 카메라는 위치가 갱신될 때마다 자동으로 현재 위치를 따라가므로,
-                    // 권한이 없을 때만 재요청하면 된다.
                     modifier = Modifier.size(64.dp).clickable {
                         if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                     },
@@ -387,19 +403,20 @@ fun RunningScreen() {
 
                 Surface(
                     modifier = Modifier.size(64.dp).clickable {
-                        if (distance > 0.01) {
+                        val finalDist = if (routePoints.isNotEmpty()) progressKm else totalDistanceKm
+                        if (finalDist > 0.01) {
                             RunHistoryStore.add(
                                 RunRecord(
                                     id = java.util.UUID.randomUUID().toString(),
-                                    courseId = null,
-                                    courseName = "자유 러닝",
+                                    courseId = currentCourse?.id,
+                                    courseName = currentCourse?.name ?: "자유 러닝",
                                     timestampMillis = System.currentTimeMillis(),
-                                    distanceKm = distance,
+                                    distanceKm = finalDist,
                                     elapsedSeconds = elapsedSeconds
                                 )
                             )
                         }
-                        distance = 0.0; elapsedSeconds = 0; isRunning = false
+                        totalDistanceKm = 0.0; progressKm = 0.0; elapsedSeconds = 0; isRunning = false
                     },
                     shape = RoundedCornerShape(32.dp),
                     color = RunWhite,

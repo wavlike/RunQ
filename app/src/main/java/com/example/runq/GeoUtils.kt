@@ -28,6 +28,31 @@ fun haversineMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Dou
 /** 도보 이동시간(분) 추정 — 평균 도보 속도 4.5km/h 기준. */
 fun walkingMinutes(meters: Double): Double = (meters / 1000.0) / 4.5 * 60.0
 
+/** 경로(points)를 따라 타겟 지점(target)에 가장 가까운 위치까지의 누적 거리(km)를 계산한다. */
+fun distanceAlongRouteToClosestPoint(points: List<RoutePoint>, target: RoutePoint): Double {
+    if (points.size < 2) return 0.0
+    var minDistance = Double.MAX_VALUE
+    var totalDistanceSoFar = 0.0
+    var bestDistanceAlongRoute = 0.0
+    for (i in 0 until points.size - 1) {
+        val p1 = points[i]; val p2 = points[i + 1]
+        val dx = p2.lng - p1.lng; val dy = p2.lat - p1.lat
+        if (dx == 0.0 && dy == 0.0) continue
+        val t = ((target.lng - p1.lng) * dx + (target.lat - p1.lat) * dy) / (dx * dx + dy * dy)
+        val tClamped = t.coerceIn(0.0, 1.0)
+        val closestX = p1.lng + tClamped * dx
+        val closestY = p1.lat + tClamped * dy
+        val d = haversineMeters(target.lat, target.lng, closestY, closestX)
+        if (d < minDistance) {
+            minDistance = d
+            val segLen = haversineMeters(p1.lat, p1.lng, p2.lat, p2.lng)
+            bestDistanceAlongRoute = totalDistanceSoFar + (segLen * tClamped)
+        }
+        totalDistanceSoFar += haversineMeters(p1.lat, p1.lng, p2.lat, p2.lng)
+    }
+    return bestDistanceAlongRoute / 1000.0
+}
+
 // 기상청 단기예보 격자(nx, ny) 변환 — 기상청이 공개한 위경도→격자 변환식(Lambert Conformal Conic).
 // 코스별 위경도가 있으면 강릉 시내 고정 격자(92, 131) 대신 실제 코스 위치 격자를 쓸 수 있다.
 private const val WEATHER_GRID_RE = 6371.00877       // 지구 반경(km)

@@ -91,6 +91,7 @@ dependencies {
 
     // Maps
     implementation(libs.kakao.maps)
+    implementation(libs.location.services)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
