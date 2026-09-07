@@ -650,21 +650,36 @@ fun CourseInfoLine(label: String, value: String, modifier: Modifier = Modifier) 
 
 // Figma "Course Cover / DB Template": 실제 사진(cover_image_url) 위에 하단 어둡게 오버레이 +
 // RUN 태그칩 + 2줄 헤드라인 + 코스명 서브카피 + 거리·시간·지형 메타라인 + RUNQ PICKS.
-// 실제 사진이 아직 없어서(cover_image_url 미확정) 사진 자리는 그라데이션으로 대체.
+// cover_image_url이 없는 코스는 기존처럼 그라데이션으로 대체.
 @Composable
 fun CourseCoverPlaceholder(course: Course) {
     Box(
         modifier = Modifier.fillMaxWidth().aspectRatio(0.82f).clip(RoundedCornerShape(20.dp))
             .background(RunBlack)
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize().background(
-                Brush.radialGradient(
-                    colors = listOf(RunPurple.copy(alpha = 0.55f), RunBlack),
-                    radius = 900f
+        val coverUrl = course.coverImageUrl
+        if (coverUrl != null) {
+            coil.compose.AsyncImage(
+                model = coverUrl, contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // 사진 위에 얹히는 흰 텍스트가 잘 보이도록 아래쪽을 어둡게 깔아준다.
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(colors = listOf(Color.Transparent, RunBlack.copy(alpha = 0.85f)))
                 )
             )
-        )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.radialGradient(
+                        colors = listOf(RunPurple.copy(alpha = 0.55f), RunBlack),
+                        radius = 900f
+                    )
+                )
+            )
+        }
         Box(
             modifier = Modifier.align(Alignment.TopStart).padding(top = 24.dp, start = 20.dp)
                 .clip(RoundedCornerShape(2.dp)).background(RunLime).padding(horizontal = 8.dp, vertical = 3.dp)
