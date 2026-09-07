@@ -237,7 +237,7 @@ fun RunningScreen() {
     // 진행 거리 (코스 위에서의 누적 거리) / 남은 거리
     var progressKm by remember { mutableStateOf(0.0) }
     val remainingKm = remember(currentCourse, progressKm) {
-        val total = currentCourse?.distanceKm ?: 0.0
+        val total = currentCourse?.resolvedDistanceKm() ?: 0.0
         (total - progressKm).coerceAtLeast(0.0)
     }
 

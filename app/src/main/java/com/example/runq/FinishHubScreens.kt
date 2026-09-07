@@ -354,7 +354,7 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
     var distance by remember { mutableStateOf(0.0) }
     var elapsedSeconds by remember { mutableStateOf(0) }
     var running by remember { mutableStateOf(true) }
-    val targetKm = remember(course) { course.distanceKm?.takeIf { it > 0 } ?: 5.0 }
+    val targetKm = remember(course) { course.resolvedDistanceKm()?.takeIf { it > 0 } ?: 5.0 }
 
     LaunchedEffect(running) {
         while (running) {

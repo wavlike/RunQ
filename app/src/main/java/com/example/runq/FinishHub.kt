@@ -48,12 +48,32 @@ data class Course(
     fun finishPoint(): RoutePoint? = finishLat?.let { lat -> finishLng?.let { lng -> RoutePoint(lat, lng) } }
 }
 
-fun Course.distanceLabel(): String = distanceKm?.let { "%.1fKM".format(it) } ?: "거리 확인중"
-fun Course.distanceRangeLabel(): String = distanceKm?.let { "약 ${it}km" } ?: "거리 확인중"
+// content_owner_note에 적힌 대로 distance_km은 팀이 실측/검증해서 채우는 값이라 함부로
+// 덮어쓰지 않는다. 다만 route_points(코스 좌표 배열)는 이미 실측 좌표라서, distance_km이
+// 비어있을 때 그 좌표를 따라 haversine 합산한 값으로 화면에 보여주는 정도는 안전하다
+// (콘텐츠 JSON에 되써넣지는 않음 — 어디까지나 표시용 파생값).
+fun Course.resolvedDistanceKm(): Double? {
+    distanceKm?.let { return it }
+    if (routePoints.size < 2) return null
+    val meters = routePoints.zipWithNext { a, b -> haversineMeters(a.lat, a.lng, b.lat, b.lng) }.sum()
+    return meters / 1000.0
+}
+
+// 예상 소요시간까지 없을 때만, 위에서 구한 거리에 일반적인 조깅 페이스(5.5~7.5분/km)를
+// 곱해 범위로 추정한다. 팀이 실측한 값이 아니라 "일반적인 페이스 가정"이라는 점을 코드에도
+// 남겨둔다 — 나중에 팀이 실제 난이도 기반 페이스로 바꾸고 싶으면 여기만 고치면 됨.
+fun Course.resolvedTimeRange(): Pair<Int, Int>? {
+    if (estimatedTimeMin != null || estimatedTimeMax != null) return null
+    val km = resolvedDistanceKm() ?: return null
+    return (km * 5.5).toInt() to (km * 7.5).toInt()
+}
+
+fun Course.distanceLabel(): String = resolvedDistanceKm()?.let { "%.1fKM".format(it) } ?: "거리 확인중"
+fun Course.distanceRangeLabel(): String = resolvedDistanceKm()?.let { "약 %.1fkm".format(it) } ?: "거리 확인중"
 fun Course.timeLabel(): String = when {
     estimatedTimeMin != null && estimatedTimeMax != null -> "약 ${estimatedTimeMin}~${estimatedTimeMax}분"
     estimatedTimeMin != null -> "약 ${estimatedTimeMin}분"
-    else -> "예상 시간 확인중"
+    else -> resolvedTimeRange()?.let { (min, max) -> "약 ${min}~${max}분" } ?: "예상 시간 확인중"
 }
 fun Course.sceneryLabel(): String = sceneryType?.takeIf { it.isNotBlank() } ?: terrain.label
 fun Course.locationLabel(): String = location?.takeIf { it.isNotBlank() } ?: region
@@ -71,7 +91,7 @@ fun Course.weatherGrid(): Pair<Int, Int>? {
 
 // 코스 거리 구간 매칭 (Course List/조건추천 화면의 필터 버튼용)
 fun Course.matchesDistanceBucket(bucket: String): Boolean {
-    val km = distanceKm ?: return false
+    val km = resolvedDistanceKm() ?: return false
     return when (bucket) {
         "짧은코스" -> km <= 4.0
         "5K" -> km in 3.5..6.5
