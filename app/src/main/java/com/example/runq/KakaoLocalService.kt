@@ -23,6 +23,18 @@ interface KakaoLocalApi {
         @Query("query") query: String,
         @Query("size") size: Int = 1
     ): KakaoLocalResponse
+
+    // 카테고리 좌표 검색 — TourAPI에 카페 전용 contentTypeId가 없어서 카페(CE7) 보완용으로 사용.
+    @GET("v2/local/search/category.json")
+    suspend fun searchCategory(
+        @Header("Authorization") authorization: String,
+        @Query("category_group_code") categoryGroupCode: String,
+        @Query("x") x: Double,     // 경도(lng)
+        @Query("y") y: Double,     // 위도(lat)
+        @Query("radius") radius: Int,
+        @Query("sort") sort: String = "distance",
+        @Query("size") size: Int = 15
+    ): KakaoLocalResponse
 }
 
 data class KakaoLocalResponse(@SerializedName("documents") val documents: List<KakaoLocalPlace>)
@@ -32,6 +44,7 @@ data class KakaoLocalPlace(
     @SerializedName("road_address_name") val roadAddressName: String?,
     @SerializedName("phone") val phone: String?,
     @SerializedName("place_url") val placeUrl: String?,
+    @SerializedName("distance") val distance: String?,  // sort=distance로 검색했을 때만 채워짐(m)
     @SerializedName("x") val x: String?,   // 경도(lng)
     @SerializedName("y") val y: String?    // 위도(lat)
 )
@@ -73,4 +86,20 @@ suspend fun fetchKakaoPlaceInfo(placeName: String): KakaoPlaceLookup? {
             placeUrl = result.placeUrl
         )
     }.getOrNull()
+}
+
+// Finish Hub 좌표 주변 카페(CE7)를 거리순으로 찾는다. TourAPI에는 카페 전용
+// contentTypeId가 없어서(음식점 39에서 키워드로 걸러내는 방식뿐) 이 API로 보완한다.
+// REST 키가 없으면 빈 목록을 반환(호출 자체를 하지 않음).
+suspend fun fetchKakaoCafesNear(lat: Double, lng: Double, radiusM: Int): List<KakaoLocalPlace> {
+    val key = BuildConfig.KAKAO_REST_API_KEY
+    if (key.isBlank()) return emptyList()
+    return runCatching {
+        KakaoLocalClient.api.searchCategory(
+            authorization = "KakaoAK $key",
+            categoryGroupCode = "CE7",
+            x = lng, y = lat,
+            radius = radiusM.coerceIn(1, 20000)
+        ).documents
+    }.getOrDefault(emptyList())
 }

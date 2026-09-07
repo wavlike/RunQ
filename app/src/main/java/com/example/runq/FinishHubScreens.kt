@@ -100,17 +100,32 @@ suspend fun fetchFinishHubPlaces(hub: FinishHub): FinishHubResult {
     val hubLng = hub.resolvedLng
 
     // EAT + CAFE 후보: TourAPI 음식점(contentTypeId=39)에서 카페 키워드로 1차 분리
-    // (TourAPI에는 카페 전용 contentTypeId가 없음 → P1에서 Kakao Local CE7로 보완 예정)
+    // (TourAPI에는 카페 전용 contentTypeId가 없음 → 아래에서 Kakao Local CE7로 보완)
     val foodItems = runCatching {
         TourApiClient.api.getNearbyPlaces(
             mapX = hubLng, mapY = hubLat, radius = maxOf(hub.eatRadiusM, hub.cafeRadiusM), contentTypeId = 39
         ).response.body.items?.item ?: emptyList()
     }.getOrDefault(emptyList())
 
-    val cafeApiRaw = foodItems.filter { p -> cafeKeywords.any { (p.title ?: "").contains(it, true) } }
+    val cafeFromTourApi = foodItems.filter { p -> cafeKeywords.any { (p.title ?: "").contains(it, true) } }
         .map { FinishHubPlace(it.title ?: "-", it.addr1 ?: "", PlaceCategory.CAFE, it.contentId, it.dist) }
     val eatApiRaw = foodItems.filterNot { p -> cafeKeywords.any { (p.title ?: "").contains(it, true) } }
         .map { FinishHubPlace(it.title ?: "-", it.addr1 ?: "", PlaceCategory.EAT, it.contentId, it.dist) }
+
+    // Kakao Local CE7(카페) 보완 — TourAPI 키워드 필터만으로는 카페가 잘 안 잡히므로
+    // 좌표 기반 카테고리 검색으로 채운다(REST 키 없으면 빈 목록, 조용히 건너뜀).
+    val cafeFromKakao = fetchKakaoCafesNear(hubLat, hubLng, hub.cafeRadiusM).map {
+        FinishHubPlace(
+            title = it.placeName ?: "-",
+            addr = it.roadAddressName?.takeIf { addr -> addr.isNotBlank() } ?: it.addressName ?: "",
+            category = PlaceCategory.CAFE,
+            contentId = null,
+            distMeters = it.distance,
+            lat = it.y?.toDoubleOrNull(),
+            lng = it.x?.toDoubleOrNull()
+        )
+    }
+    val cafeApiRaw = (cafeFromTourApi + cafeFromKakao).distinctBy { it.title.trim() }
 
     // SEE: 관광지/문화시설/행사/레포츠 여러 contentTypeId를 합쳐서 조회
     val seeApiRaw = seeContentTypeIds.flatMap { typeId ->
@@ -586,15 +601,32 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
     var sortByDistance by remember { mutableStateOf(true) }
     var hubMenuExpanded by remember { mutableStateOf(false) }
 
-    val places = remember(currentHub, category, sortByDistance) {
+    // RunQ 큐레이션(JSON)만 보여주면 실시간 TourAPI 데이터가 빠지므로, HubPlacesScreen과
+    // 동일하게 fetchFinishHubPlaces(TourAPI locationBasedList2 + 큐레이션 병합)를 호출한다.
+    var hubResult by remember(currentHub?.id) { mutableStateOf<FinishHubResult?>(null) }
+    var loadFailed by remember(currentHub?.id) { mutableStateOf(false) }
+    var retryTick by remember { mutableStateOf(0) }
+
+    LaunchedEffect(currentHub?.id, retryTick) {
         val hub = currentHub
-        if (hub == null) emptyList() else {
-            val filtered = RunQData.places.filter {
-                it.finishHubId == hub.id && it.status != ContentStatus.HIDDEN && (category == null || it.category == category)
-            }
-            if (sortByDistance) filtered.sortedBy { it.distMeters?.toDoubleOrNull() ?: Double.MAX_VALUE }
-            else filtered.sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenBy { it.displayOrder })
+        if (hub != null) {
+            hubResult = null
+            loadFailed = false
+            val fetched = runCatching { fetchFinishHubPlaces(hub) }.getOrNull()
+            hubResult = fetched
+            loadFailed = fetched == null
         }
+    }
+
+    val allPlaces = remember(hubResult) {
+        val r = hubResult ?: return@remember emptyList()
+        (r.eat + r.cafe + r.see).filter { it.status != ContentStatus.HIDDEN }
+    }
+    val places = remember(allPlaces, category, sortByDistance, currentHub) {
+        val hub = currentHub
+        val filtered = if (category == null) allPlaces else allPlaces.filter { it.category == category }
+        if (sortByDistance) filtered.sortedBy { it.distanceMeters(hub) ?: Double.MAX_VALUE }
+        else filtered.sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenBy { it.displayOrder })
     }
 
     if (currentHub == null) {
@@ -646,7 +678,7 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
                 modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp)
                     .clip(RoundedCornerShape(15.dp)).background(RunWhite).padding(horizontal = 14.dp, vertical = 7.dp)
             ) {
-                Text("${places.size} PLACES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Text(if (hubResult == null && !loadFailed) "불러오는 중" else "${places.size} PLACES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack)
             }
         }
 
@@ -678,10 +710,14 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
                 )
             }
             Spacer(Modifier.height(14.dp))
-            if (places.isEmpty()) {
-                EmptyStateView("📍", "아직 등록된 장소가 없어요", "다른 Hub나 카테고리를 확인해보세요.", Modifier.padding(top = 20.dp))
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            when {
+                loadFailed -> ErrorStateView(
+                    "추천 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
+                    onRetry = { retryTick++ }, modifier = Modifier.padding(top = 20.dp)
+                )
+                hubResult == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
+                places.isEmpty() -> EmptyStateView("📍", "아직 등록된 장소가 없어요", "다른 Hub나 카테고리를 확인해보세요.", Modifier.padding(top = 20.dp))
+                else -> LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(places) { place ->
                         PlaceListCard(place) { onPlaceClick(hub, place) }
                     }
