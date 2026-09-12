@@ -3,6 +3,10 @@ package com.example.runq
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Looper
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -39,6 +43,7 @@ import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+import com.kakao.vectormap.camera.CameraUpdateFactory
 
 // ════════════════════════════════════════════════════════
 // 강릉 러닝 크루 (홈 "Find The Spot Near You" / Club 탭에서 함께 사용)
@@ -289,18 +294,55 @@ fun RunningScreen(runSession: RunSessionState) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var kakaoMapRef by remember { mutableStateOf<KakaoMap?>(null) }
+    var lastLocation by remember { mutableStateOf<Location?>(null) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         hasLocationPermission = isGranted
     }
 
-    // 시뮬레이션용 시간/거리 업데이트 (runSession이 탭 전환보다 위에서 유지되므로,
-    // 다른 탭에 갔다와도 진행 중인 러닝이 초기화되지 않습니다)
+    // 실제 GPS 위치를 구독해서 이동 거리를 누적합니다 (러닝 중 + 권한이 있을 때만).
+    // runSession이 탭 전환보다 위에서 유지되므로, 다른 탭에 갔다와도 진행 중인 러닝이
+    // 초기화되지 않습니다.
+    DisposableEffect(runSession.isRunning, hasLocationPermission) {
+        if (!runSession.isRunning || !hasLocationPermission) {
+            return@DisposableEffect onDispose {}
+        }
+
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val listener = LocationListener { location ->
+            lastLocation?.let { prev ->
+                val meters = prev.distanceTo(location)
+                if (meters > 2f) { // GPS 오차로 정지 중에도 거리가 계속 늘어나는 걸 막기 위한 최소 이동거리 필터
+                    runSession.distanceKm += meters / 1000.0
+                }
+            }
+            lastLocation = location
+            kakaoMapRef?.moveCamera(
+                CameraUpdateFactory.newCenterPosition(LatLng.from(location.latitude, location.longitude))
+            )
+        }
+
+        try {
+            locationManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                1000L,
+                0f,
+                listener,
+                Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            // 권한이 막 취소된 경우 등 - 지도/거리 갱신만 멈추고 앱은 정상 동작
+        }
+
+        onDispose { locationManager.removeUpdates(listener) }
+    }
+
+    // 경과 시간(초) 카운트. 거리는 이제 위 GPS 콜백에서 실측으로 누적됩니다.
     LaunchedEffect(runSession.isRunning) {
         while (runSession.isRunning) {
             kotlinx.coroutines.delay(1000)
             runSession.elapsedSeconds += 1
-            runSession.distanceKm += 0.01 // 초당 10미터씩 증가 (가짜 데이터)
         }
     }
 
@@ -309,7 +351,8 @@ fun RunningScreen(runSession: RunSessionState) {
         if (hasLocationPermission) {
             KakaoMapView(
                 modifier = Modifier.fillMaxSize(),
-                initialPosition = LatLng.from(37.7946, 128.9022) // 초기 강릉 경포호
+                initialPosition = LatLng.from(37.7946, 128.9022), // 초기 강릉 경포호
+                onMapReady = { kakaoMapRef = it }
             )
         } else {
             Box(Modifier.fillMaxSize().background(RunBgGray), contentAlignment = Alignment.Center) {
@@ -357,10 +400,15 @@ fun RunningScreen(runSession: RunSessionState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    modifier = Modifier.size(64.dp).clickable { 
-                        if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                        else { 
-                            // 현재 위치로 카메라 이동 (실제 GPS 연동 시 필요)
+                    modifier = Modifier.size(64.dp).clickable {
+                        if (!hasLocationPermission) {
+                            launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        } else {
+                            lastLocation?.let { loc ->
+                                kakaoMapRef?.moveCamera(
+                                    CameraUpdateFactory.newCenterPosition(LatLng.from(loc.latitude, loc.longitude))
+                                )
+                            }
                         }
                     },
                     shape = RoundedCornerShape(32.dp),

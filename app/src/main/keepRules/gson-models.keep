@@ -1,0 +1,22 @@
+# Gson은 리플렉션으로 필드를 채우기 때문에, R8이 이 모델 클래스들의 필드 이름을
+# 난독화/제거하면 API 응답 파싱이 조용히 깨집니다(필드가 전부 null이 되는 식).
+# release 최적화(optimization.enable = true)를 켜면서 함께 추가한 keep 규칙입니다.
+-keepattributes Signature
+-keepattributes *Annotation*
+
+-keep class com.example.runq.TourResponse { *; }
+-keep class com.example.runq.TourBody { *; }
+-keep class com.example.runq.TourItems { *; }
+-keep class com.example.runq.TourItemList { *; }
+-keep class com.example.runq.TourPlace { *; }
+
+-keep class com.example.runq.WeatherResponse { *; }
+-keep class com.example.runq.WeatherBody { *; }
+-keep class com.example.runq.WeatherItems { *; }
+-keep class com.example.runq.WeatherItemList { *; }
+-keep class com.example.runq.WeatherItem { *; }
+
+-keep class com.example.runq.AirResponse { *; }
+-keep class com.example.runq.AirBody { *; }
+-keep class com.example.runq.AirItems { *; }
+-keep class com.example.runq.AirItem { *; }

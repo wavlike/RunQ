@@ -172,6 +172,7 @@ fun RunQApp() {
 fun LoginScreen(onLoginSuccess: () -> Unit) {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -207,7 +208,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         // 입력 필드: Username
         LoginTextField(
             value = username,
-            onValueChange = { username = it },
+            onValueChange = { username = it; errorMessage = null },
             label = "Username",
             icon = Icons.Default.Person
         )
@@ -217,17 +218,32 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
         // 입력 필드: Password
         LoginTextField(
             value = password,
-            onValueChange = { password = it },
+            onValueChange = { password = it; errorMessage = null },
             label = "Password",
             icon = Icons.Default.Lock,
             isPassword = true
         )
 
+        if (errorMessage != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(errorMessage!!, color = Color.Red, fontSize = 13.sp)
+        }
+
         Spacer(Modifier.height(40.dp))
 
         // Log In 버튼 (피그마 라임 버튼)
+        // 참고: 백엔드가 없어서 아이디/비밀번호가 실제로 누구 것인지 검증하지는 못합니다.
+        // 빈 입력만 막는 최소 검증이고, 진짜 사용자 인증을 하려면 서버 또는
+        // 카카오 로그인 같은 소셜 로그인 연동이 필요합니다.
         Button(
-            onClick = onLoginSuccess,
+            onClick = {
+                errorMessage = when {
+                    username.isBlank() || password.isBlank() -> "아이디와 비밀번호를 모두 입력해주세요."
+                    password.length < 4 -> "비밀번호는 4자 이상 입력해주세요."
+                    else -> null
+                }
+                if (errorMessage == null) onLoginSuccess()
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
