@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     // 최신 Compose 컴파일러 플러그인 유지
     alias(libs.plugins.kotlin.compose)
+}
+
+// 공공데이터포털 API 키는 커밋되지 않는 local.properties에서 읽어옵니다.
+// local.properties에 TOUR_API_KEY=... 한 줄을 추가하세요.
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -22,6 +33,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField(
+            "String",
+            "TOUR_API_KEY",
+            "\"${localProperties.getProperty("TOUR_API_KEY", "")}\""
+        )
     }
 
     buildTypes {
@@ -39,6 +56,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // ⚠️ [수정 포인트] 최신 kotlin.compose 플러그인을 쓸 때는
@@ -47,11 +65,7 @@ android {
 
 dependencies {
 
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    // 안정적인 Compose BOM 버전으로 변경 (2024년 4월 버전이 가장 무난합니다)
-    implementation(platform("androidx.compose:compose-bom:2024.04.00"))
+    implementation(platform(libs.androidx.compose.bom))
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -72,7 +86,7 @@ dependencies {
     implementation(libs.play.services.maps)
 
     testImplementation(libs.junit)
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.04.00"))
+    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

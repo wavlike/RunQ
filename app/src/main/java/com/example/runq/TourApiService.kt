@@ -9,10 +9,9 @@ import retrofit2.http.Query
 // TourAPI 통신 설정 + 인터페이스
 // ────────────────────────────────────────────────
 
-// ⚠️⚠️ 여기에 본인 인증키(Decoding 키)를 붙여넣으세요 ⚠️⚠️
-// (지금은 빠르게 테스트하려고 여기 직접 넣어요. GitHub 올릴 땐 빼야 하는데,
-//  그 안전하게 빼는 방법은 이 단계 성공한 뒤에 알려줄게요.)
-const val TOUR_API_KEY = "HAVRC68bADYCJJkl96ezCrfFdamvQIi3mnhg7/avItL8WBE9yOcLbFHW+YB4FD+PVnXND/TGuKbk/78heKHAKg=="
+// 공공데이터포털 인증키는 local.properties의 TOUR_API_KEY 값을 빌드 시점에 주입받습니다.
+// (커밋되면 안 되는 값이라 소스에는 직접 넣지 않습니다. 아래 BuildConfig 필드 참고: app/build.gradle.kts)
+val TOUR_API_KEY: String = BuildConfig.TOUR_API_KEY
 // API 요청을 정의하는 인터페이스
 interface TourApi {
     @GET("locationBasedList2")
