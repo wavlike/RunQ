@@ -310,6 +310,9 @@ enum class Tab(val label: String) {
 @Composable
 fun MainWithTabs() {
     var tab by remember { mutableStateOf(Tab.HOME) }
+    // 탭을 갈아끼워도(when 분기로 컴포저블 자체가 사라졌다 다시 생성됨) 러닝 진행 상태가
+    // 유지되도록, 탭 전환보다 위쪽에서 러닝 세션 상태를 들고 있습니다.
+    val runSession = remember { RunSessionState() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 화면 영역
@@ -317,8 +320,8 @@ fun MainWithTabs() {
             when (tab) {
                 Tab.HOME -> HomeScreen(onNavigateToClub = { tab = Tab.CLUB })
                 Tab.COURSE -> CourseFlow()
-                Tab.RUN -> RunningScreen()
-                Tab.HISTORY -> HistoryScreen()
+                Tab.RUN -> RunningScreen(runSession)
+                Tab.HISTORY -> HistoryScreen(runSession.history)
                 Tab.CLUB -> ClubScreen()
             }
         }

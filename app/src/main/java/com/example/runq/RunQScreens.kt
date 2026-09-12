@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,6 +39,23 @@ import com.kakao.vectormap.KakaoMapReadyCallback
 import com.kakao.vectormap.LatLng
 import com.kakao.vectormap.MapLifeCycleCallback
 import com.kakao.vectormap.MapView
+
+// ════════════════════════════════════════════════════════
+// 강릉 러닝 크루 (홈 "Find The Spot Near You" / Club 탭에서 함께 사용)
+// ════════════════════════════════════════════════════════
+data class RunningClub(
+    val name: String,
+    val location: String,
+    val memberCount: Int,
+    val description: String
+)
+
+val runningClubs = listOf(
+    RunningClub("강릉 러너스", "경포호", 128, "매주 토요일 아침 경포호를 도는 초보자 환영 크루예요."),
+    RunningClub("경포 페이서", "경포해변", 76, "페이스별로 그룹을 나눠 함께 뛰는 바다 러닝 크루입니다."),
+    RunningClub("주말 아침 크루", "안목해변", 54, "커피거리에서 마무리하는 여유로운 주말 러닝 모임이에요."),
+    RunningClub("강문 나이트런", "강문해변", 41, "평일 저녁 야간 러닝을 즐기는 크루입니다.")
+)
 
 // ════════════════════════════════════════════════════════
 // 홈 화면: 피그마 스타일 세련된 레이아웃
@@ -139,7 +158,7 @@ fun HomeScreen(onNavigateToClub: () -> Unit) {
                             Brush.verticalGradient(listOf(Color.Transparent, RunBlack.copy(alpha = 0.6f)))
                         ))
                         Column(modifier = Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-                            Text("Half Marathon event held by\nMandiri Bank Group", 
+                            Text("2026 강릉 경포호 마라톤 대회\n강릉 러닝크루 연합 주최",
                                 color = RunWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
                         Box(modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
@@ -163,8 +182,8 @@ fun HomeScreen(onNavigateToClub: () -> Unit) {
                 contentPadding = PaddingValues(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(listOf("Tangerang Runners", "JakBar Pacer", "Sunday Morning")) { spot ->
-                    SpotCard(spot, onNavigateToClub)
+                items(runningClubs.take(3)) { club ->
+                    SpotCard(club.name, club.location, onNavigateToClub)
                 }
             }
             Spacer(Modifier.height(32.dp))
@@ -216,7 +235,7 @@ fun WeatherSmallItem(label: String, value: String, isHighlight: Boolean = false)
 }
 
 @Composable
-fun SpotCard(name: String, onClick: () -> Unit) {
+fun SpotCard(name: String, location: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier.size(width = 180.dp, height = 110.dp).clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
@@ -225,7 +244,7 @@ fun SpotCard(name: String, onClick: () -> Unit) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)) {
                 Text(name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = RunBlack)
-                Text("Indonesia", fontSize = 11.sp, color = RunGray)
+                Text(location, fontSize = 11.sp, color = RunGray)
             }
         }
     }
@@ -263,10 +282,8 @@ fun HomeCourseCard(course: Course, onClick: () -> Unit) {
 // 러닝 화면: 지도 및 GPS 실시간 연동
 // ════════════════════════════════════════════════════════
 @Composable
-fun RunningScreen() {
+fun RunningScreen(runSession: RunSessionState) {
     val context = LocalContext.current
-    var isRunning by remember { mutableStateOf(false) }
-    var distance by remember { mutableStateOf(0.0) }
     var hasLocationPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -277,11 +294,13 @@ fun RunningScreen() {
         hasLocationPermission = isGranted
     }
 
-    // 시뮬레이션용 시간/거리 업데이트
-    LaunchedEffect(isRunning) {
-        while(isRunning) {
+    // 시뮬레이션용 시간/거리 업데이트 (runSession이 탭 전환보다 위에서 유지되므로,
+    // 다른 탭에 갔다와도 진행 중인 러닝이 초기화되지 않습니다)
+    LaunchedEffect(runSession.isRunning) {
+        while (runSession.isRunning) {
             kotlinx.coroutines.delay(1000)
-            distance += 0.01 // 초당 10미터씩 증가 (가짜 데이터)
+            runSession.elapsedSeconds += 1
+            runSession.distanceKm += 0.01 // 초당 10미터씩 증가 (가짜 데이터)
         }
     }
 
@@ -318,16 +337,16 @@ fun RunningScreen() {
             Spacer(Modifier.height(40.dp))
 
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(String.format("%.2f", distance), fontSize = 80.sp, fontWeight = FontWeight.Black, color = RunBlack)
+                Text(String.format("%.2f", runSession.distanceKm), fontSize = 80.sp, fontWeight = FontWeight.Black, color = RunBlack)
                 Text("Distance (Km)", fontSize = 14.sp, color = RunGray)
             }
 
             Spacer(Modifier.height(40.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                MetricItem("0'00\"", "Avg Pace")
-                MetricItem("00.00", "Duration")
-                MetricItem("0 kcal", "Calories")
+                MetricItem(formatPace(runSession.elapsedSeconds, runSession.distanceKm), "Avg Pace")
+                MetricItem(formatDuration(runSession.elapsedSeconds), "Duration")
+                MetricItem("${estimateCalories(runSession.distanceKm)} kcal", "Calories")
             }
 
             Spacer(Modifier.weight(1f))
@@ -354,16 +373,16 @@ fun RunningScreen() {
                 }
 
                 Button(
-                    onClick = { isRunning = !isRunning },
+                    onClick = { runSession.isRunning = !runSession.isRunning },
                     modifier = Modifier.height(64.dp).width(160.dp),
                     shape = RoundedCornerShape(32.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if(!isRunning) RunLime else RunBlack, contentColor = if(!isRunning) RunBlack else RunWhite)
+                    colors = ButtonDefaults.buttonColors(containerColor = if(!runSession.isRunning) RunLime else RunBlack, contentColor = if(!runSession.isRunning) RunBlack else RunWhite)
                 ) {
-                    Text(if(!isRunning) "START" else "PAUSE", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Text(if(!runSession.isRunning) "START" else "PAUSE", fontWeight = FontWeight.Black, fontSize = 18.sp)
                 }
 
                 Surface(
-                    modifier = Modifier.size(64.dp).clickable { distance = 0.0; isRunning = false },
+                    modifier = Modifier.size(64.dp).clickable { runSession.finishRun() },
                     shape = RoundedCornerShape(32.dp),
                     color = RunWhite,
                     shadowElevation = 6.dp
@@ -435,15 +454,115 @@ fun MetricItem(value: String, label: String) {
 }
 
 @Composable
-fun HistoryScreen() {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("History Screen", fontWeight = FontWeight.Black, fontSize = 24.sp)
+fun HistoryScreen(history: List<RunRecord>) {
+    Column(modifier = Modifier.fillMaxSize().background(RunWhite).padding(24.dp)) {
+        Spacer(Modifier.height(16.dp))
+        Text("Running History", fontSize = 28.sp, fontWeight = FontWeight.Black, color = RunBlack)
+        Text("지금까지의 러닝 기록이에요", fontSize = 14.sp, color = RunGray)
+        Spacer(Modifier.height(20.dp))
+
+        if (history.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.DirectionsRun, null, tint = RunGray, modifier = Modifier.size(48.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "아직 러닝 기록이 없어요.\nRun 탭에서 첫 러닝을 시작해보세요!",
+                        color = RunGray,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(history) { record -> HistoryCard(record) }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoryCard(record: RunRecord) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = RunBgGray)
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(record.dateLabel, fontSize = 13.sp, color = RunGray)
+                Spacer(Modifier.height(4.dp))
+                Text(String.format("%.2f km", record.distanceKm), fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(formatDuration(record.durationSeconds), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = RunPurple)
+                Text("페이스 ${formatPace(record.durationSeconds, record.distanceKm)}", fontSize = 12.sp, color = RunGray)
+            }
+        }
     }
 }
 
 @Composable
 fun ClubScreen() {
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("Club Screen", fontWeight = FontWeight.Black, fontSize = 24.sp)
+    var joinedClubs by remember { mutableStateOf(setOf<String>()) }
+
+    Column(modifier = Modifier.fillMaxSize().background(RunWhite)) {
+        Column(modifier = Modifier.padding(24.dp)) {
+            Text("Running Clubs", fontSize = 28.sp, fontWeight = FontWeight.Black, color = RunBlack)
+            Text("강릉의 러닝 크루를 만나보세요", fontSize = 14.sp, color = RunGray)
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(runningClubs) { club ->
+                val joined = joinedClubs.contains(club.name)
+                ClubCard(
+                    club = club,
+                    joined = joined,
+                    onToggleJoin = {
+                        joinedClubs = if (joined) joinedClubs - club.name else joinedClubs + club.name
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ClubCard(club: RunningClub, joined: Boolean, onToggleJoin: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = RunBgGray)
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text(club.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+            Text("${club.location} · 멤버 ${club.memberCount}명", fontSize = 12.sp, color = RunGray)
+            Spacer(Modifier.height(8.dp))
+            Text(club.description, fontSize = 13.sp, color = RunBlack)
+            Spacer(Modifier.height(12.dp))
+            if (joined) {
+                OutlinedButton(
+                    onClick = onToggleJoin,
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.5.dp, RunBlack),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)
+                ) { Text("가입됨", fontWeight = FontWeight.Bold) }
+            } else {
+                Button(
+                    onClick = onToggleJoin,
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
+                ) { Text("가입하기", fontWeight = FontWeight.Bold) }
+            }
+        }
     }
 }
