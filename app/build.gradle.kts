@@ -6,8 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// 공공데이터포털 API 키는 커밋되지 않는 local.properties에서 읽어옵니다.
-// local.properties에 TOUR_API_KEY=... 한 줄을 추가하세요.
+// 공공데이터포털/카카오맵 API 키는 커밋되지 않는 local.properties에서 읽어옵니다.
+// local.properties에 TOUR_API_KEY=..., KAKAO_NATIVE_APP_KEY=... 를 추가하세요.
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.exists()) {
@@ -38,6 +38,11 @@ android {
             "String",
             "TOUR_API_KEY",
             "\"${localProperties.getProperty("TOUR_API_KEY", "")}\""
+        )
+        buildConfigField(
+            "String",
+            "KAKAO_NATIVE_APP_KEY",
+            "\"${localProperties.getProperty("KAKAO_NATIVE_APP_KEY", "")}\""
         )
     }
 
@@ -82,8 +87,7 @@ dependencies {
     implementation(libs.retrofit.gson)
 
     // Maps
-    implementation(libs.google.maps.compose)
-    implementation(libs.play.services.maps)
+    implementation(libs.kakao.maps.sdk)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

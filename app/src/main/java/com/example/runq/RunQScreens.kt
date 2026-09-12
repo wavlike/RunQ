@@ -23,14 +23,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.kakao.vectormap.KakaoMap
+import com.kakao.vectormap.KakaoMapReadyCallback
+import com.kakao.vectormap.LatLng
+import com.kakao.vectormap.MapLifeCycleCallback
+import com.kakao.vectormap.MapView
 
 // ════════════════════════════════════════════════════════
 // 홈 화면: 피그마 스타일 세련된 레이아웃
@@ -271,10 +277,6 @@ fun RunningScreen() {
         hasLocationPermission = isGranted
     }
 
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(LatLng(37.7946, 128.9022), 15f) // 초기 강릉 경포호
-    }
-
     // 시뮬레이션용 시간/거리 업데이트
     LaunchedEffect(isRunning) {
         while(isRunning) {
@@ -286,11 +288,9 @@ fun RunningScreen() {
     Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
         // 지도 영역
         if (hasLocationPermission) {
-            GoogleMap(
+            KakaoMapView(
                 modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(isMyLocationEnabled = true),
-                uiSettings = MapUiSettings(myLocationButtonEnabled = false)
+                initialPosition = LatLng.from(37.7946, 128.9022) // 초기 강릉 경포호
             )
         } else {
             Box(Modifier.fillMaxSize().background(RunBgGray), contentAlignment = Alignment.Center) {
@@ -376,6 +376,54 @@ fun RunningScreen() {
             Spacer(Modifier.height(20.dp))
         }
     }
+}
+
+// ════════════════════════════════════════════════════════
+// 카카오맵 SDK v2 래퍼 (Compose에서는 AndroidView로 감싸서 사용)
+// ════════════════════════════════════════════════════════
+@Composable
+fun KakaoMapView(
+    modifier: Modifier = Modifier,
+    initialPosition: LatLng,
+    initialZoomLevel: Int = 15,
+    onMapReady: (KakaoMap) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val mapView = remember { MapView(context) }
+
+    // MapView는 Activity 생명주기에 맞춰 resume()/pause()를 직접 호출해줘야 합니다.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.resume()
+                Lifecycle.Event.ON_PAUSE -> mapView.pause()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = {
+            mapView.start(
+                object : MapLifeCycleCallback() {
+                    override fun onMapDestroy() {}
+                    override fun onMapError(error: Exception) {}
+                },
+                object : KakaoMapReadyCallback() {
+                    override fun onMapReady(kakaoMap: KakaoMap) {
+                        onMapReady(kakaoMap)
+                    }
+                    override fun getPosition(): LatLng = initialPosition
+                    override fun getZoomLevel(): Int = initialZoomLevel
+                }
+            )
+            mapView
+        }
+    )
 }
 
 @Composable
