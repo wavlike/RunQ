@@ -102,7 +102,7 @@ fun AuthEntryScreen(onSignUp: () -> Unit, onLogIn: () -> Unit, onBrowse: () -> U
             Image(
                 painter = painterResource(R.drawable.runq_logo),
                 contentDescription = "RunQ 로고",
-                modifier = Modifier.height(28.dp)
+                modifier = Modifier.height(140.dp)
             )
             Spacer(Modifier.height(50.dp))
             Text(

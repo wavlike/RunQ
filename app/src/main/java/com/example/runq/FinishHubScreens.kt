@@ -1108,6 +1108,9 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
         if (id != null) {
             detail = runCatching {
                 TourApiClient.api.getDetailCommon(contentId = id).response.body.items?.item?.firstOrNull()
+            }.onFailure {
+                // "상세정보를 불러오지 못했어요"로만 뭉뚱그려지지 않도록 실제 원인을 logcat에 남긴다.
+                android.util.Log.w("PlaceDetail", "detailCommon2 실패 (contentId=$id, title=${place.title})", it)
             }.getOrNull()
             loading = false
         }

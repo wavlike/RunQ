@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -158,6 +159,12 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 20.dp)
             ) {
             item {
+                Text("오늘의 날씨", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                Spacer(Modifier.height(14.dp))
+                TodayWeatherCard(safety)
+                Spacer(Modifier.height(24.dp))
+            }
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -216,6 +223,47 @@ fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+// 홈 화면 전용 "오늘의 날씨" 박스 — 기온/미세먼지/바람/강수를 한눈에 보여준다.
+// (지금까지는 TodaysRunCard 한 줄 요약에만 끼워 넣었는데, 별도 박스로 분리해달라는 요청 반영)
+@Composable
+fun TodayWeatherCard(safety: SafetyInfo?) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = RunWhite),
+        border = BorderStroke(1.dp, RunBorderGray)
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                WeatherStat("기온", safety?.temp ?: "-")
+                WeatherStat("미세먼지", safety?.pm10 ?: "-")
+                WeatherStat("바람", safety?.wind ?: "-")
+                WeatherStat("강수", safety?.rain ?: "-")
+            }
+            Spacer(Modifier.height(14.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(RunLime).padding(vertical = 9.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "러닝 적합도: ${safety?.fitness ?: "확인중"}",
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeatherStat(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 15.sp, fontWeight = FontWeight.Black, color = RunBlack)
+        Spacer(Modifier.height(2.dp))
+        Text(label, fontSize = 11.sp, color = RunGray)
     }
 }
 
