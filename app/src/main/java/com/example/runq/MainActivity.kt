@@ -28,13 +28,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
@@ -82,6 +79,11 @@ import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.outlined.DirectionsRun
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material.icons.filled.Terrain
+import androidx.compose.material.icons.filled.Landscape
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import kotlinx.coroutines.launch
@@ -302,8 +304,8 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit) {
             EmptyStateView("🔍", "조건에 맞는 코스가 없어요", "필터를 바꿔서 다시 찾아보세요.", Modifier.padding(top = 24.dp))
         } else {
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(displayedCourses) { index, course ->
-                    CourseListRow(course, index) { onCourseClick(course) }
+                items(displayedCourses) { course ->
+                    CourseListRow(course) { onCourseClick(course) }
                 }
                 item { Text("아래로 스크롤해 더 많은 코스 보기", fontSize = 11.sp, color = RunGray, modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
             }
@@ -332,11 +334,8 @@ private fun FilterDropdownChip(label: String, options: List<String>, onSelect: (
     }
 }
 
-// 코스별 컬러 썸네일 팔레트 — Figma 카드 디자인의 장식용 배경색(콘텐츠 데이터 아님, 인덱스로 순환)
-private val courseThumbnailColors = listOf(Color(0xFFDEEBED), Color(0xFFF0E5D1), Color(0xFFE3EBE0), Color(0xFFEBE5DB))
-
 @Composable
-fun CourseListRow(course: Course, index: Int = 0, onClick: () -> Unit) {
+fun CourseListRow(course: Course, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
@@ -347,10 +346,7 @@ fun CourseListRow(course: Course, index: Int = 0, onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CourseThumbnail(
-                label = course.sceneryLabel(),
-                color = courseThumbnailColors[index % courseThumbnailColors.size]
-            )
+            CourseThumbnail(course = course)
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -389,34 +385,39 @@ private fun ListTag(text: String) {
     }
 }
 
-// Figma의 "Route Accent"(작은 루프 경로 아이콘) + "Finish Dot"을 Canvas로 근사한 코스 썸네일.
-// 실제 코스 사진(cover_image_url)이 채워지기 전까지 쓰는 장식용 자리표시.
+// 코스의 지형(terrain)에 실제로 대응하는 아이콘 + 배경색.
+// 실제 코스 사진(cover_image_url)이 채워지기 전까지 쓰는 장식용 자리표시이지만,
+// 최소한 이 코스가 어떤 지형인지는 보여주도록 함(이전엔 목록 순서로 색만 돌려쓰는
+// 의미 없는 루프 아이콘이었음).
+private data class TerrainVisual(val icon: androidx.compose.ui.graphics.vector.ImageVector, val tint: Color)
+
+private fun terrainVisual(terrain: Terrain): TerrainVisual = when (terrain) {
+    Terrain.COAST -> TerrainVisual(Icons.Filled.Waves, Color(0xFFDCEBF2))
+    Terrain.TRAIL -> TerrainVisual(Icons.Filled.Terrain, Color(0xFFE1EBDD))
+    Terrain.HILL -> TerrainVisual(Icons.Filled.Landscape, Color(0xFFF0E5D1))
+    Terrain.ROLLING -> TerrainVisual(Icons.Filled.ShowChart, Color(0xFFE9E1EE))
+    Terrain.MIXED -> TerrainVisual(Icons.Filled.Shuffle, Color(0xFFEFE7DC))
+    Terrain.FLAT -> TerrainVisual(Icons.Filled.Route, Color(0xFFEBE5DB))
+    Terrain.OTHER, Terrain.UNKNOWN -> TerrainVisual(Icons.Filled.Place, RunBgGray)
+}
+
 @Composable
-private fun CourseThumbnail(label: String, color: Color) {
+private fun CourseThumbnail(course: Course) {
+    val visual = terrainVisual(course.terrain)
     Box(
-        modifier = Modifier.size(width = 92.dp, height = 88.dp).clip(RoundedCornerShape(16.dp)).background(color),
+        modifier = Modifier.size(width = 92.dp, height = 88.dp).clip(RoundedCornerShape(16.dp)).background(visual.tint),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(52.dp, 34.dp)) {
-            val strokeWidth = 2.dp.toPx()
-            drawOval(
-                color = RunBlack.copy(alpha = 0.55f),
-                topLeft = androidx.compose.ui.geometry.Offset(0f, 0f),
-                size = androidx.compose.ui.geometry.Size(size.width, size.height),
-                style = Stroke(width = strokeWidth)
-            )
-            drawCircle(
-                color = RunBlack.copy(alpha = 0.7f),
-                radius = strokeWidth * 1.6f,
-                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height)
-            )
-        }
+        Icon(
+            visual.icon, contentDescription = course.terrain.label,
+            tint = RunBlack.copy(alpha = 0.55f), modifier = Modifier.size(30.dp)
+        )
         Box(
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
                 .clip(RoundedCornerShape(9.dp)).background(RunWhite.copy(alpha = 0.45f))
                 .padding(horizontal = 10.dp, vertical = 3.dp)
         ) {
-            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = RunGray)
+            Text(course.sceneryLabel(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = RunGray)
         }
     }
 }

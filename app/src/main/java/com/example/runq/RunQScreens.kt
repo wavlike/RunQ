@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -515,7 +514,7 @@ fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit) {
                 EmptyStateView("🔍", "일치하는 코스가 없어요", "다른 검색어로 시도해보세요.", Modifier.padding(top = 30.dp))
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    itemsIndexed(matchedCourses) { index, course -> CourseListRow(course, index) { onCourseClick(course) } }
+                    items(matchedCourses) { course -> CourseListRow(course) { onCourseClick(course) } }
                 }
             }
         } else {
