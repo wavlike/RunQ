@@ -39,8 +39,7 @@ data class Course(
     val status: ContentStatus,
     val sourceUrl: String?,
     val contentOwnerNote: String?,
-    val routePoints: List<RoutePoint> = emptyList(),
-    val rating: Double = 4.5                 // 실제 평점 시스템 붙기 전까지의 플레이스홀더 (콘텐츠 데이터 아님)
+    val routePoints: List<RoutePoint> = emptyList()
 ) {
     val finishHubIds: List<String> get() = listOfNotNull(finishHubId, secondaryFinishHubId)
 

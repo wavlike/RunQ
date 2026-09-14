@@ -67,10 +67,12 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
     var safety by remember { mutableStateOf<SafetyInfo?>(null) }
     var distanceFilter by remember { mutableStateOf("전체") }
     var searchText by remember { mutableStateOf("") }
-    // "다음 러닝으로 설정"(Saved 탭)한 코스가 있으면 최우선으로 보여준다.
+    // "다음 러닝으로 설정"(Saved 탭)한 코스가 있으면 최우선으로 보여주고,
+    // 없으면 콘텐츠팀이 is_featured로 표시해둔 코스 중 노출순서가 가장 앞선 것을 보여준다.
     val featured = remember {
         val pinned = SavedItemsStore.nextCourseId?.let { id -> RunQData.courses.find { it.id == id && it.status != ContentStatus.HIDDEN } }
-        pinned ?: RunQData.courses.filter { it.status != ContentStatus.HIDDEN }.maxByOrNull { it.rating }
+        val visible = RunQData.courses.filter { it.status != ContentStatus.HIDDEN }
+        pinned ?: visible.filter { it.isFeatured }.minByOrNull { it.displayOrder } ?: visible.minByOrNull { it.displayOrder }
     }
 
     LaunchedEffect(featured?.id) {

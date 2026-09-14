@@ -277,7 +277,7 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit) {
             (regionFilter == "전체 지역" || c.region == regionFilter) &&
                 (distanceFilter == "전체" || c.matchesDistanceBucket(distanceFilter)) &&
                 (difficultyFilter == "전체" || c.difficulty.label == difficultyFilter)
-        }.sortedByDescending { it.rating }
+        }.sortedBy { it.displayOrder }
     }
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream).padding(24.dp)) {
