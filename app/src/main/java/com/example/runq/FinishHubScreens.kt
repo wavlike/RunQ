@@ -943,10 +943,13 @@ private fun PlaceListCard(place: FinishHubPlace, onClick: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    place.festivalPeriodLabel()?.let { "$it 진행" }
+                    // "전체보기"(PlacePickCard)와 동일하게 RunQ 큐레이션 문구(shortCopy)를 최우선으로 보여준다.
+                    // Place 탭 기본 목록(이 카드)만 이 문구가 빠져 있어서 "전체보기"와 다르게 보이던 문제.
+                    place.shortCopy?.takeIf { it.isNotBlank() }
+                        ?: place.festivalPeriodLabel()?.let { "$it 진행" }
                         ?: meters?.let { "도보 ${walkingMinutes(it).toInt()} 분" }
                         ?: (if (place.isCurated) "RunQ가 골라둔 스팟" else place.addr.ifBlank { "코스 근처 스팟" }),
-                    fontSize = 11.sp, color = RunGray
+                    fontSize = 11.sp, color = RunGray, maxLines = 2
                 )
             }
             val placeId = place.id
