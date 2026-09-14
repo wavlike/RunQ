@@ -628,6 +628,7 @@ fun CompleteScreen(
 object PlaceTabRequest {
     private var pendingHubId: String? = null
     private var pendingCategory: PlaceCategory? = null
+    private var pendingDetailPlace: FinishHubPlace? = null
 
     fun request(hubId: String?, category: PlaceCategory? = null) {
         pendingHubId = hubId
@@ -638,6 +639,17 @@ object PlaceTabRequest {
         val result = pendingHubId to pendingCategory
         pendingHubId = null
         pendingCategory = null
+        return result
+    }
+
+    // 검색 결과 등 다른 탭에서 특정 장소를 콕 집어 상세화면으로 바로 진입시킬 때 사용.
+    fun requestDetail(place: FinishHubPlace) {
+        pendingDetailPlace = place
+    }
+
+    fun consumeDetail(): FinishHubPlace? {
+        val result = pendingDetailPlace
+        pendingDetailPlace = null
         return result
     }
 }
@@ -653,7 +665,13 @@ sealed class PlaceStep {
 
 @Composable
 fun PlaceFlow() {
-    var step by remember { mutableStateOf<PlaceStep>(PlaceStep.Home) }
+    var step by remember {
+        mutableStateOf<PlaceStep>(
+            PlaceTabRequest.consumeDetail()?.let { place ->
+                findHub(place.finishHubId)?.let { hub -> PlaceStep.Detail(hub, place) }
+            } ?: PlaceStep.Home
+        )
+    }
     when (val s = step) {
         is PlaceStep.Home -> PlaceHomeScreen(
             onPlaceClick = { hub, place -> step = PlaceStep.Detail(hub, place) },

@@ -146,7 +146,13 @@ fun MainWithTabs(onLogout: () -> Unit) {
         // 화면 영역
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when (tab) {
-                Tab.HOME -> HomeFlow(onFindCourses = { tab = Tab.COURSE })
+                Tab.HOME -> HomeFlow(
+                    onFindCourses = { tab = Tab.COURSE },
+                    onOpenPlace = { place ->
+                        PlaceTabRequest.requestDetail(place)
+                        tab = Tab.PLACE
+                    }
+                )
                 Tab.COURSE -> CourseFlow(
                     onSectionHint = { courseSectionTab = it },
                     onOpenFinishHub = { course, category ->

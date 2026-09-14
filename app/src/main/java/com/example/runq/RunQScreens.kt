@@ -50,7 +50,7 @@ sealed class HomeStep {
 }
 
 @Composable
-fun HomeFlow(onFindCourses: () -> Unit) {
+fun HomeFlow(onFindCourses: () -> Unit, onOpenPlace: (FinishHubPlace) -> Unit = {}) {
     var step by remember { mutableStateOf<HomeStep>(HomeStep.Main) }
     when (step) {
         HomeStep.Main -> HomeScreen(
@@ -58,7 +58,11 @@ fun HomeFlow(onFindCourses: () -> Unit) {
             onOpenSearch = { step = HomeStep.Search },
             onOpenNotifications = { step = HomeStep.Notifications }
         )
-        HomeStep.Search -> SearchResultsScreen(onBack = { step = HomeStep.Main }, onCourseClick = { onFindCourses() })
+        HomeStep.Search -> SearchResultsScreen(
+            onBack = { step = HomeStep.Main },
+            onCourseClick = { onFindCourses() },
+            onPlaceClick = onOpenPlace
+        )
         HomeStep.Notifications -> NotificationsScreen(onBack = { step = HomeStep.Main })
     }
 }
@@ -178,7 +182,7 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
                 }
                 Spacer(Modifier.height(14.dp))
                 if (featured != null) {
-                    TodaysRunCard(course = featured, safety = safety, onClick = onFindCourses)
+                    TodaysRunCard(course = featured, onClick = onFindCourses)
                 } else {
                     Text("아직 등록된 코스가 없어요.", fontSize = 13.sp, color = RunGray)
                 }
@@ -188,42 +192,11 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
     }
 }
 
+// 홈 화면 "오늘의 추천 코스" 카드 — 날씨 정보는 별도의 TodayWeatherCard로 분리됐으므로
+// 여기선 Course 목록(CourseListRow)과 동일한 단순한 카드 스타일을 그대로 재사용한다.
 @Composable
-fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = RunLime)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth().background(
-                Brush.linearGradient(listOf(RunLime, Color(0xFFF7F592), RunLavender))
-            )
-        ) {
-            Column(Modifier.padding(20.dp)) {
-                Text("TODAY'S RUN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunBlack.copy(alpha = 0.6f))
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "${course.locationLabel().removePrefix("강릉 ")}, ${course.distanceLabel()} 가볍게",
-                    fontSize = 25.sp, fontWeight = FontWeight.Bold, color = RunBlack, lineHeight = 29.sp
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        "${safety?.temp ?: "--"} · 미세먼지 ${safety?.pm10 ?: "-"} · 바람 ${safety?.wind ?: "-"} · 예상 ${course.timeLabel()}",
-                        fontSize = 12.sp, color = RunBlack.copy(alpha = 0.75f), modifier = Modifier.weight(1f),
-                        maxLines = 2
-                    )
-                    Box(
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(RunBlack)
-                            .padding(horizontal = 16.dp, vertical = 9.dp)
-                    ) {
-                        Text("코스 보기", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunWhite)
-                    }
-                }
-            }
-        }
-    }
+fun TodaysRunCard(course: Course, onClick: () -> Unit) {
+    CourseListRow(course = course, onClick = onClick)
 }
 
 // 홈 화면 전용 "오늘의 날씨" 박스 — 기온/미세먼지/바람/강수를 한눈에 보여준다.
@@ -494,7 +467,7 @@ fun MetricItem(value: String, label: String) {
 // 12 Home / Search Results — 코스명·지역명으로 실제 RunQData를 필터링한다.
 // ════════════════════════════════════════════════════════
 @Composable
-fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit) {
+fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit, onPlaceClick: (FinishHubPlace) -> Unit = {}) {
     var query by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf(0) } // 0 = 코스, 1 = 장소
 
@@ -580,7 +553,8 @@ fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit) {
                     items(matchedPlaces) { place ->
                         Box(
                             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                                .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(16.dp)).padding(14.dp)
+                                .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(16.dp))
+                                .clickable { onPlaceClick(place) }.padding(14.dp)
                         ) {
                             Column {
                                 Text(place.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
