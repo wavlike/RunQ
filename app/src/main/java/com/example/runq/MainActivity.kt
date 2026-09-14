@@ -263,10 +263,23 @@ fun CourseFlow(onSectionHint: (Tab) -> Unit = {}, onOpenFinishHub: (Course, Plac
 // Figma "20 Course / List" 기준: 헤더 + 지역/거리/난이도 드롭다운 필터 + 에디토리얼 리스트 카드
 private val distanceBucketOptions = listOf("전체", "짧은코스", "5K", "중거리", "10K", "장거리")
 
+// Home의 "거리로 찾기" 칩에서 선택한 거리를 Course 탭 진입 시 그대로 적용하기 위한 핸드오프.
+// (PlaceTabRequest와 동일한 패턴 — 탭이 전환될 때마다 화면이 새로 구성돼서 파라미터를
+// 직접 넘길 방법이 없어 핸드오프 객체로 한 번만 전달한다.)
+object CourseTabRequest {
+    private var pendingDistanceFilter: String? = null
+    fun request(distanceFilter: String?) { pendingDistanceFilter = distanceFilter }
+    fun consume(): String? {
+        val result = pendingDistanceFilter
+        pendingDistanceFilter = null
+        return result
+    }
+}
+
 @Composable
 fun BrowseScreen(onCourseClick: (Course) -> Unit) {
     var regionFilter by remember { mutableStateOf("전체 지역") }
-    var distanceFilter by remember { mutableStateOf("전체") }
+    var distanceFilter by remember { mutableStateOf(CourseTabRequest.consume() ?: "전체") }
     var difficultyFilter by remember { mutableStateOf("전체") }
     val regionOptions = remember {
         listOf("전체 지역") + RunQData.courses.map { it.region }.distinct().sorted()

@@ -1,6 +1,7 @@
 package com.example.runq
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -93,12 +95,20 @@ fun AuthEntryScreen(onSignUp: () -> Unit, onLogIn: () -> Unit, onBrowse: () -> U
     Box(modifier = Modifier.fillMaxSize().background(RunBlack)) {
         AmbientGlows(lime = -115 to -90, lavender = 185 to 225, limeSize = 310, lavenderSize = 330)
 
-        Column(modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp)) {
-            Text("RunQ", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = RunWhite, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Column(
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = painterResource(R.drawable.runq_logo),
+                contentDescription = "RunQ 로고",
+                modifier = Modifier.height(28.dp)
+            )
             Spacer(Modifier.height(50.dp))
             Text(
                 "나만의 코스를 발견하고\n지금 바로 달려보세요.",
-                fontSize = 28.sp, fontWeight = FontWeight.Bold, color = RunWhite, lineHeight = 36.sp
+                fontSize = 28.sp, fontWeight = FontWeight.Bold, color = RunWhite, lineHeight = 36.sp,
+                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
             )
         }
 

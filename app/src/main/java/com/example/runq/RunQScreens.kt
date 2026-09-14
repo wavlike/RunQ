@@ -139,7 +139,12 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
                             modifier = Modifier.clip(RoundedCornerShape(20.dp))
                                 .background(if (selected) RunPurple else RunWhite)
                                 .then(if (selected) Modifier else Modifier.border(1.dp, RunBorderGray, RoundedCornerShape(20.dp)))
-                                .clickable { distanceFilter = label }
+                                .clickable {
+                                    distanceFilter = label
+                                    // Course 탭으로 넘어가서 이 거리 조건이 바로 적용된 목록을 보여준다.
+                                    CourseTabRequest.request(label)
+                                    onFindCourses()
+                                }
                                 .padding(horizontal = 16.dp, vertical = 9.dp)
                         ) {
                             Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = RunBlack)
