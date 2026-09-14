@@ -20,3 +20,8 @@
 -keep class com.example.runq.AirBody { *; }
 -keep class com.example.runq.AirItems { *; }
 -keep class com.example.runq.AirItem { *; }
+
+# RunQ_DB.xlsx에서 내려받아 assets/runq_db/*.json으로 번들한 콘텐츠도 Gson으로 읽습니다.
+-keep class com.example.runq.Course { *; }
+-keep class com.example.runq.Place { *; }
+-keep class com.example.runq.FinishHub { *; }

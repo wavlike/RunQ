@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    TourAPI(공공데이터포털) firstimage 필드가 종종 http:// 주소로 내려오는 경우가 있어,
+    Android 9(API 28)+ 기본 정책(cleartext 차단)에 막혀 사진이 아예 안 뜨는 걸 막기 위한 설정입니다.
+    지금은 이미지가 실제로 어느 도메인에서 오는지 검증 전이라 넓게 허용해뒀습니다.
+    출시 전에는 실제 이미지가 오는 도메인만 남기고 좁히는 걸 권장합니다.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

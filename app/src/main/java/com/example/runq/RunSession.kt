@@ -12,7 +12,8 @@ import java.util.Locale
 data class RunRecord(
     val dateLabel: String,
     val distanceKm: Double,
-    val durationSeconds: Int
+    val durationSeconds: Int,
+    val courseName: String? = null
 )
 
 // MainWithTabs에서 한 번만 생성해 RunningScreen/HistoryScreen에 함께 전달합니다.
@@ -24,9 +25,24 @@ class RunSessionState {
     var elapsedSeconds by mutableStateOf(0)
     val history = mutableStateListOf<RunRecord>()
 
+    // Course 상세에서 "이 코스로 러닝 시작"을 누르면 채워집니다. 없으면 자유 러닝.
+    var selectedCourse by mutableStateOf<Course?>(null)
+
+    // finishRun() 직후, 방금 끝난 코스에 연결된 Finish Hub id (추천 장소 다이얼로그 트리거용)
+    var justFinishedHubId by mutableStateOf<String?>(null)
+
     fun finishRun() {
         if (distanceKm > 0.0) {
-            history.add(0, RunRecord(dateLabel = todayLabel(), distanceKm = distanceKm, durationSeconds = elapsedSeconds))
+            history.add(
+                0,
+                RunRecord(
+                    dateLabel = todayLabel(),
+                    distanceKm = distanceKm,
+                    durationSeconds = elapsedSeconds,
+                    courseName = selectedCourse?.courseName
+                )
+            )
+            justFinishedHubId = selectedCourse?.finishHubId
         }
         isRunning = false
         distanceKm = 0.0

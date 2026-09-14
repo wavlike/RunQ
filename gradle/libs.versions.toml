@@ -11,6 +11,7 @@ composeBom = "2024.04.00"
 retrofit = "2.11.0"
 gson = "2.10.1"
 kakaoMapsSdk = "2.13.1"
+coilCompose = "2.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -25,6 +26,7 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
 retrofit-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
 kakao-maps-sdk = { group = "com.kakao.maps.open", name = "android", version.ref = "kakaoMapsSdk" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coilCompose" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }

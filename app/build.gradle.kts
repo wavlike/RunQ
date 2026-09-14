@@ -89,6 +89,9 @@ dependencies {
     // Maps
     implementation(libs.kakao.maps.sdk)
 
+    // 원격 이미지 로딩 (TourAPI/RunQ 지정 사진 표시용)
+    implementation(libs.coil.compose)
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

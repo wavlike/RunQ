@@ -19,6 +19,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +39,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -67,7 +68,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.FilterList
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -87,52 +87,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import kotlinx.coroutines.launch
 
-// ────────────────────────────────────────────────
-// 코스 데이터 모델
-// ────────────────────────────────────────────────
-data class Course(
-    val name: String, val location: String, val distance: String, val distanceKm: String,
-    val estimatedTime: String, val scenery: String, val difficulty: String,
-    val reason: String, val nearby: String, val tags: List<String>,
-    val lat: Double, val lng: Double,
-    val rating: Double = 4.5,
-    val reviews: List<String> = listOf("코스가 정말 예뻐요!", "초보자도 뛰기 좋습니다.", "경치가 끝내줍니다.")
-)
-
-val allCourses = listOf(
-    Course("경포호 기본런", "강릉 경포호 둘레길", "약 4.3~5km", "5KM", "약 30~40분", "호수", "쉬움",
-        "평지 위주라 초보 러너가 부담 없이 완주하기 좋아요.", "경포해변 카페거리, 허균·허난설헌 기념공원",
-        listOf("호수", "짧은코스", "쉬움", "초보추천"), 37.7955, 128.8962, 4.8, 
-        listOf("호수 따라 뛰니 힐링되네요.", "평지라 무릎 부담이 적어요.", "강릉 오면 꼭 뛰어야 하는 코스!")),
-    Course("안목해변 커피거리 왕복런", "강릉 안목해변", "약 4.3~5km", "5KM", "약 30~40분", "바다", "쉬움",
-        "바다를 끼고 달리다 커피거리에서 마무리하기 좋은 코스예요.", "안목 커피거리, 강문해변",
-        listOf("바다", "짧은코스", "쉬움", "사진명소"), 37.7713, 128.9470, 4.7,
-        listOf("커피 향 맡으며 뛰니까 기분 최고!", "바다 바람이 시원해요.", "코스가 짧아서 부담 없어요.")),
-    Course("강문해변 짧은 해송런", "강릉 강문해변", "약 3~5km", "4KM", "약 20~35분", "바다", "쉬움",
-        "해송길과 해변을 오가는 짧고 편안한 힐링 코스예요.", "강문해변, 송정해변",
-        listOf("바다", "짧은코스", "쉬움", "힐링"), 37.7936, 128.9163, 4.5),
-    Course("안목→강문→경포 바다런", "강릉 안목~경포", "약 5~7km", "6KM", "약 40~55분", "바다", "보통",
-        "강릉 대표 바다 코스를 한 번에 이어 뛸 수 있어요.", "안목 커피거리, 경포해변",
-        listOf("바다", "중거리", "보통", "관광연계"), 37.7825, 128.9310, 4.9,
-        listOf("강릉 바다 정복 완료!", "경치가 너무 예뻐서 멈추게 되네요.", "생각보다 길지만 보람차요.")),
-    Course("경포호 10K", "강릉 경포호", "약 10km", "10KM", "약 60~75분", "호수", "보통",
-        "경포호 2바퀴로 거리를 채우는 챌린지형 코스예요.", "경포대, 경포해변",
-        listOf("호수", "10K", "보통", "챌린지"), 37.7955, 128.8962, 4.6),
-    Course("남대천→안목해변 5K", "강릉 남대천~안목", "약 5km", "5KM", "약 35~45분", "강변", "쉬움",
-        "도심 강변에서 바다로 빠지는 흐름이 좋은 코스예요.", "월화거리, 안목 커피거리",
-        listOf("강변", "5K", "쉬움", "카페연계"), 37.7590, 128.9080, 4.4),
-    Course("오죽헌→선교장→경포호", "강릉 오죽헌 일대", "약 5~7km", "6KM", "약 40~55분", "문화", "보통",
-        "문화유산을 지나며 달리는 관광 연계 코스예요.", "오죽헌, 선교장",
-        listOf("문화", "중거리", "보통", "관광연계"), 37.7792, 128.8784, 4.3),
-    Course("경포생태저류지 메타세쿼이아길", "강릉 경포생태저류지", "약 2.5~4km", "3KM", "약 20~30분", "숲길", "쉬움",
-        "조용한 숲길에서 산책하듯 달리는 힐링 코스예요.", "경포호, 가시연습지",
-        listOf("숲길", "짧은코스", "쉬움", "힐링"), 37.8010, 128.9010, 4.8),
-    Course("옥계 헌화로 11K", "강릉 옥계 헌화로", "약 11km", "11KM", "약 70~90분", "바다", "어려움",
-        "해안 절경을 따라 달리는 상급자·대회형 코스예요.", "헌화로 해안도로, 옥계해변",
-        listOf("바다", "장거리", "어려움", "챌린지"), 37.6512, 129.0355, 4.2)
-)
-
-data class NearbyPlace(val title: String, val addr: String, val category: String)
+// 코스 데이터(Course/Place/FinishHub)는 RunQData.kt의 RunQDatabase에서 불러옵니다.
+// (RunQ_DB.xlsx 큐레이션 데이터 기반, 기존에 여기 하드코딩돼 있던 예시 9개 코스는 삭제됨)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -334,8 +290,14 @@ fun MainWithTabs() {
         // 화면 영역
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when (tab) {
-                Tab.HOME -> HomeScreen(onNavigateToClub = { tab = Tab.CLUB })
-                Tab.COURSE -> CourseFlow()
+                Tab.HOME -> HomeScreen(
+                    onNavigateToClub = { tab = Tab.CLUB },
+                    onNavigateToCourse = { tab = Tab.COURSE }
+                )
+                Tab.COURSE -> CourseFlow(onStartRun = { course ->
+                    runSession.selectedCourse = course
+                    tab = Tab.RUN
+                })
                 Tab.RUN -> RunningScreen(runSession)
                 Tab.HISTORY -> HistoryScreen(runSession.history)
                 Tab.CLUB -> ClubScreen()
@@ -381,9 +343,9 @@ sealed class CourseStep {
 }
 
 @Composable
-fun CourseFlow() {
+fun CourseFlow(onStartRun: (Course) -> Unit) {
     var step by remember { mutableStateOf<CourseStep>(CourseStep.Browse) }
-    
+
     when (val s = step) {
         is CourseStep.Browse -> BrowseScreen(
             onCourseClick = { step = CourseStep.Detail(it, CourseStep.Browse) },
@@ -391,27 +353,27 @@ fun CourseFlow() {
         )
         is CourseStep.Condition -> ConditionScreen(
             onBack = { step = CourseStep.Browse },
-            onRecommend = { sc, di, df -> step = CourseStep.Result(filterCourses(sc, di, df)) }
+            onRecommend = { terrain, difficulty -> step = CourseStep.Result(filterCourses(terrain, difficulty)) }
         )
         is CourseStep.Result -> ResultScreen(
             courses = s.courses,
             onCourseClick = { step = CourseStep.Detail(it, s) },
             onBack = { step = CourseStep.Condition }
         )
-        is CourseStep.Detail -> DetailScreen(s.course) { step = s.from }
+        is CourseStep.Detail -> DetailScreen(s.course, onStartRun = onStartRun) { step = s.from }
     }
 }
 
 @Composable
 fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> Unit) {
-    var sortBy by remember { mutableStateOf("추천순") } // 추천순(별점), 거리순, 시간순
-    
+    var sortBy by remember { mutableStateOf("노출순") } // 노출순(기획 큐레이션 순서), 난이도순, 이름순
+
     val displayedCourses = remember(sortBy) {
-        when(sortBy) {
-            "추천순" -> allCourses.sortedByDescending { it.rating } 
-            "거리순" -> allCourses.sortedBy { it.distanceKm.filter { c -> c.isDigit() }.toDoubleOrNull() ?: 99.0 }
-            "시간순" -> allCourses.sortedBy { it.estimatedTime }
-            else -> allCourses
+        val base = RunQDatabase.visibleCourses() // 이미 display_order로 정렬돼 있음
+        when (sortBy) {
+            "난이도순" -> base.sortedBy { difficultyRank(it.difficulty) }
+            "이름순" -> base.sortedBy { it.courseName }
+            else -> base
         }
     }
 
@@ -419,14 +381,14 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit, onNavigateToRecommend: () -> U
         Spacer(Modifier.height(16.dp))
         Text("Running Courses", fontSize = 28.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Text("다양한 강릉 코스를 만나보세요", fontSize = 14.sp, color = RunGray)
-        
+
         Spacer(Modifier.height(20.dp))
-        
+
         // 정렬 탭
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SortTab("추천순", sortBy == "추천순") { sortBy = "추천순" }
-            SortTab("거리순", sortBy == "거리순") { sortBy = "거리순" }
-            SortTab("시간순", sortBy == "시간순") { sortBy = "시간순" }
+            SortTab("노출순", sortBy == "노출순") { sortBy = "노출순" }
+            SortTab("난이도순", sortBy == "난이도순") { sortBy = "난이도순" }
+            SortTab("이름순", sortBy == "이름순") { sortBy = "이름순" }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -470,27 +432,11 @@ fun SortTab(label: String, isSelected: Boolean, onClick: () -> Unit) {
     }
 }
 
-fun filterCourses(scenery: String, distance: String, difficulty: String): List<Course> {
-    return allCourses.filter { c ->
-        (scenery == "상관없음" || c.scenery == scenery) &&
-                (difficulty == "상관없음" || c.difficulty == difficulty) &&
-                (distance == "상관없음" || c.tags.contains(distance))
+fun filterCourses(terrain: String, difficulty: String): List<Course> {
+    return RunQDatabase.visibleCourses().filter { c ->
+        (terrain == "상관없음" || c.terrain == terrain) &&
+                (difficulty == "상관없음" || c.difficulty == difficulty)
     }
-}
-
-suspend fun fetchNearby(course: Course): List<NearbyPlace> {
-    val result = mutableListOf<NearbyPlace>()
-    val spots = TourApiClient.api.getNearbyPlaces(mapX = course.lng, mapY = course.lat, contentTypeId = 12)
-        .response.body.items?.item ?: emptyList()
-    spots.take(2).forEach { result.add(NearbyPlace(it.title ?: "-", it.addr1 ?: "", "관광지")) }
-    val foods = TourApiClient.api.getNearbyPlaces(mapX = course.lng, mapY = course.lat, contentTypeId = 39)
-        .response.body.items?.item ?: emptyList()
-    val cafeWords = listOf("카페", "커피", "베이커리", "로스터리", "coffee", "cafe")
-    foods.filter { p -> cafeWords.any { (p.title ?: "").contains(it, true) } }
-        .take(2).forEach { result.add(NearbyPlace(it.title ?: "-", it.addr1 ?: "", "카페")) }
-    foods.filter { p -> cafeWords.none { (p.title ?: "").contains(it, true) } }
-        .take(2).forEach { result.add(NearbyPlace(it.title ?: "-", it.addr1 ?: "", "맛집")) }
-    return result
 }
 
 // ══════════════════════════════════════════════════
@@ -599,9 +545,8 @@ fun LandingScreen(onLoginClick: () -> Unit, onJoinUsClick: () -> Unit) {
 // 코스: 조건 선택
 // ══════════════════════════════════════════════════
 @Composable
-fun ConditionScreen(onBack: () -> Unit, onRecommend: (String, String, String) -> Unit) {
-    var scenery by remember { mutableStateOf("상관없음") }
-    var distance by remember { mutableStateOf("상관없음") }
+fun ConditionScreen(onBack: () -> Unit, onRecommend: (String, String) -> Unit) {
+    var terrain by remember { mutableStateOf("상관없음") }
     var difficulty by remember { mutableStateOf("상관없음") }
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
@@ -612,14 +557,22 @@ fun ConditionScreen(onBack: () -> Unit, onRecommend: (String, String, String) ->
         Text("Your Preference", fontSize = 28.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Text("당신에게 딱 맞는 러닝 코스를 큐레이션해드려요", fontSize = 14.sp, color = RunGray)
         Spacer(Modifier.height(28.dp))
-        OptionRow("경관", listOf("상관없음", "바다", "호수", "강변", "문화", "숲길"), scenery) { scenery = it }
+        OptionRow(
+            "경관",
+            listOf("상관없음" to "상관없음", "FLAT" to terrainLabel("FLAT"), "COAST" to terrainLabel("COAST"),
+                "MIXED" to terrainLabel("MIXED"), "TRAIL" to terrainLabel("TRAIL")),
+            terrain
+        ) { terrain = it }
         Spacer(Modifier.height(20.dp))
-        OptionRow("거리", listOf("상관없음", "짧은코스", "5K", "중거리", "10K", "장거리"), distance) { distance = it }
-        Spacer(Modifier.height(20.dp))
-        OptionRow("난이도", listOf("상관없음", "쉬움", "보통", "어려움"), difficulty) { difficulty = it }
+        OptionRow(
+            "난이도",
+            listOf("상관없음" to "상관없음", "EASY" to difficultyLabel("EASY"), "NORMAL" to difficultyLabel("NORMAL"),
+                "HARD" to difficultyLabel("HARD")),
+            difficulty
+        ) { difficulty = it }
         Spacer(Modifier.weight(1f))
         Button(
-            onClick = { onRecommend(scenery, distance, difficulty) },
+            onClick = { onRecommend(terrain, difficulty) },
             modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
@@ -629,22 +582,22 @@ fun ConditionScreen(onBack: () -> Unit, onRecommend: (String, String, String) ->
 }
 
 @Composable
-fun OptionRow(label: String, options: List<String>, selected: String, onSelect: (String) -> Unit) {
+fun OptionRow(label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Column {
         Text(label, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = RunBlack)
         Spacer(Modifier.height(12.dp))
         options.chunked(3).forEach { rowOptions ->
             Row(modifier = Modifier.fillMaxWidth()) {
-                rowOptions.forEach { option ->
-                    val isSel = option == selected
+                rowOptions.forEach { (value, display) ->
+                    val isSel = value == selected
                     Box(
                         modifier = Modifier.padding(end = 10.dp, bottom = 10.dp)
                             .clip(RoundedCornerShape(12.dp)) // 더 현대적인 라운딩
                             .background(if (isSel) RunBlack else RunBgGray)
-                            .clickable { onSelect(option) }
+                            .clickable { onSelect(value) }
                             .padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
-                        Text(option, fontSize = 14.sp,
+                        Text(display, fontSize = 14.sp,
                             color = if (isSel) RunWhite else RunBlack,
                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
                     }
@@ -690,20 +643,22 @@ fun CourseCard(course: Course, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = RunBlack)
     ) {
         Column(Modifier.padding(20.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(course.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunWhite)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Star, null, tint = RunLime, modifier = Modifier.size(16.dp))
-                    Text(" ${course.rating}", color = RunWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                }
+            Text(course.courseName, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RunWhite)
+            if (!course.headline.isNullOrBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(course.headline, fontSize = 13.sp, color = RunWhite.copy(alpha = 0.75f), maxLines = 1)
             }
             Spacer(Modifier.height(10.dp))
-            Text(course.distanceKm, fontSize = 34.sp, fontWeight = FontWeight.Black, color = RunLime)
+            Text(
+                course.distanceKm?.let { "%.1fKM".format(it) } ?: "거리 정보 준비중",
+                fontSize = if (course.distanceKm != null) 34.sp else 20.sp,
+                fontWeight = FontWeight.Black, color = RunLime
+            )
             Spacer(Modifier.height(10.dp))
             Row {
-                Badge("#${course.scenery}", RunPurple)
+                Badge("#${course.sceneryType ?: terrainLabel(course.terrain)}", RunPurple)
                 Spacer(Modifier.width(6.dp))
-                Badge("난이도 ${course.difficulty}", RunGray)
+                Badge("난이도 ${difficultyLabel(course.difficulty)}", RunGray)
             }
         }
     }
@@ -717,40 +672,34 @@ fun Badge(text: String, color: Color) {
 }
 
 // ══════════════════════════════════════════════════
-// 코스: 상세 (★ API 호출 — 주변장소 + 안전정보)
+// 코스: 상세 (★ 안전정보 + Finish Hub 추천 장소)
 // ══════════════════════════════════════════════════
 @Composable
-fun DetailScreen(course: Course, onBack: () -> Unit) {
-    var places by remember { mutableStateOf<List<NearbyPlace>?>(null) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var safety by remember { mutableStateOf<SafetyInfo?>(null) }  // ★ 안전정보 추가
+fun DetailScreen(course: Course, onStartRun: (Course) -> Unit, onBack: () -> Unit) {
+    var safety by remember { mutableStateOf<SafetyInfo?>(null) }  // ★ 안전정보
 
-    LaunchedEffect(course.name) {
-        // 주변 장소
-        try { places = fetchNearby(course) }
-        catch (e: Exception) { errorMsg = "주변 정보를 불러오지 못했어요. (네트워크 확인)"; places = emptyList() }
-        // 안전 정보 (실패해도 앱 안 죽게 따로 try)
+    LaunchedEffect(course.courseId) {
         try { safety = fetchSafety() }
         catch (e: Exception) { safety = null }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
         Spacer(Modifier.height(16.dp))
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = RunBlack)) {
             Column(Modifier.padding(20.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                    Column {
-                        Text(course.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RunWhite)
-                        Text(course.location, fontSize = 13.sp, color = RunPurple)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Star, null, tint = RunLime, modifier = Modifier.size(20.dp))
-                        Text(" ${course.rating}", color = RunWhite, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                    }
+                Text(course.courseName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RunWhite)
+                Text(course.location ?: course.region ?: "", fontSize = 13.sp, color = RunPurple)
+                if (!course.headline.isNullOrBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(course.headline, fontSize = 14.sp, color = RunWhite.copy(alpha = 0.85f))
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(course.distanceKm, fontSize = 38.sp, fontWeight = FontWeight.Black, color = RunLime)
+                Text(
+                    course.distanceKm?.let { "%.1fKM".format(it) } ?: "거리 정보 준비중",
+                    fontSize = if (course.distanceKm != null) 38.sp else 22.sp,
+                    fontWeight = FontWeight.Black, color = RunLime
+                )
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -782,64 +731,36 @@ fun DetailScreen(course: Course, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(18.dp))
 
-        InfoRow("예상 소요 시간", course.estimatedTime)
-        InfoRow("경관 유형", course.scenery)
-        InfoRow("난이도", course.difficulty)
-        Spacer(Modifier.height(18.dp))
-        Text("추천 이유", fontWeight = FontWeight.Bold, color = RunBlack)
-        Spacer(Modifier.height(4.dp))
-        Text(course.reason, color = RunBlack)
-        Spacer(Modifier.height(18.dp))
-        
-        // ★ 리뷰 섹션 추가
-        Text("Runners' Reviews", fontWeight = FontWeight.Bold, color = RunBlack)
-        Spacer(Modifier.height(8.dp))
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = RunBgGray)) {
-            Column(Modifier.padding(16.dp)) {
-                course.reviews.forEach { review ->
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                        Icon(Icons.Default.AccountCircle, null, tint = RunGray, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(review, fontSize = 13.sp, color = RunBlack)
-                    }
-                }
-            }
-        }
+        InfoRow("예상 소요 시간", formatEstimatedTime(course.estimatedTimeMin, course.estimatedTimeMax))
+        InfoRow("경관 유형", course.sceneryType ?: terrainLabel(course.terrain))
+        InfoRow("난이도", difficultyLabel(course.difficulty))
         Spacer(Modifier.height(18.dp))
 
-        Text("주변 관광지 · 맛집 · 카페", fontWeight = FontWeight.Bold, color = RunBlack)
-        Spacer(Modifier.height(8.dp))
-        when {
-            places == null && errorMsg == null -> Row { CircularProgressIndicator(color = RunPurple) }
-            errorMsg != null -> Text(errorMsg!!, color = RunGray)
-            places!!.isEmpty() -> Text("주변 추천 장소를 찾지 못했어요.", color = RunGray)
-            else -> LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                items(places!!) { place ->
-                    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = RunBgGray)) {
-                        Column(Modifier.padding(14.dp)) {
-                            Row {
-                                Badge(place.category, RunLime)
-                                Spacer(Modifier.width(8.dp))
-                                Text(place.title, fontWeight = FontWeight.Bold, color = RunBlack)
-                            }
-                            if (place.addr.isNotBlank()) {
-                                Spacer(Modifier.height(4.dp))
-                                Text(place.addr, fontSize = 13.sp, color = RunGray)
-                            }
-                        }
-                    }
-                }
-            }
+        // ★ Finish Hub 기준 추천 장소 (EAT / CAFE / SEE)
+        val hub = remember(course.finishHubId) { RunQDatabase.finishHub(course.finishHubId) }
+        if (hub != null) {
+            Text("러닝 끝나고 들르기 좋은 곳", fontWeight = FontWeight.Bold, color = RunBlack)
+            Text(hub.hubName, fontSize = 12.sp, color = RunGray)
+            Spacer(Modifier.height(10.dp))
+            FinishHubPlacesSection(hub)
+            Spacer(Modifier.height(18.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth().height(50.dp),
+
+        Button(
+            onClick = { onStartRun(course) },
+            modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)) {
-            Text("처음으로", fontWeight = FontWeight.Bold)
-        }
+            colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
+        ) { Text("이 코스로 러닝 시작", fontWeight = FontWeight.Bold) }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.5.dp, RunBlack),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = RunBlack)
+        ) { Text("처음으로", fontWeight = FontWeight.Bold) }
+        Spacer(Modifier.height(12.dp))
     }
 }
 

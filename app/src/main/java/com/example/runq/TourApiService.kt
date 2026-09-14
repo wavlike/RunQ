@@ -27,6 +27,39 @@ interface TourApi {
         @Query("arrange") arrange: String = "E",         // E = 거리순 정렬
         @Query("contentTypeId") contentTypeId: Int       // 12관광지 / 39음식점
     ): TourResponse
+
+    // 좌표가 없는 장소(FinishHub 큐레이션 장소 등)의 사진을 이름으로 찾아 보완할 때 사용
+    @GET("searchKeyword2")
+    suspend fun searchKeyword(
+        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("keyword") keyword: String,
+        @Query("numOfRows") numOfRows: Int = 5,
+        @Query("pageNo") pageNo: Int = 1,
+        @Query("contentTypeId") contentTypeId: Int? = null // 12관광지 / 39음식점, 모르면 생략
+    ): TourResponse
+}
+
+// 이름으로 검색해서 찾은 TourAPI 사진 URL 캐시 (같은 장소를 화면에서 여러 번 그릴 때 중복 호출 방지)
+private val tourApiImageCache = mutableMapOf<String, String?>()
+
+// TourAPI에 해당 장소명이 있으면 대표 이미지를, 없으면(또는 조회 실패 시) null을 반환합니다.
+// 절대 추측하지 않고, 실제로 못 찾으면 빈칸(null) 그대로 둡니다.
+suspend fun fetchTourApiImage(placeName: String, contentTypeId: Int? = null): String? {
+    val cacheKey = "$placeName:$contentTypeId"
+    if (tourApiImageCache.containsKey(cacheKey)) return tourApiImageCache[cacheKey]
+
+    val image = try {
+        val items = TourApiClient.api.searchKeyword(keyword = placeName, contentTypeId = contentTypeId)
+            .response.body.items?.item ?: emptyList()
+        items.firstOrNull { !it.firstImage.isNullOrBlank() }?.firstImage
+    } catch (e: Exception) {
+        null
+    }
+    tourApiImageCache[cacheKey] = image
+    return image
 }
 
 // Retrofit 객체 (앱 전체에서 하나만 만들어 재사용)
