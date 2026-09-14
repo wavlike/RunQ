@@ -3,6 +3,7 @@ package com.example.runq
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -26,7 +28,9 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1217,15 +1221,20 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
                 val lat = kakaoInfo?.lat ?: place.lat ?: hub?.resolvedLat
                 val lng = kakaoInfo?.lng ?: place.lng ?: hub?.resolvedLng
                 val label = Uri.encode(place.title)
-                val uri = if (lat != null && lng != null) {
-                    Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)")
+                // 앱 전체가 카카오맵 기반이므로 "지도에서 보기"도 (기기의 기본 지도 앱이 아니라)
+                // 카카오맵 앱으로 바로 연다. 카카오맵 앱이 없으면 브라우저의 카카오맵 웹으로 폴백.
+                if (lat != null && lng != null) {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("kakaomap://look?p=$lat,$lng")))
+                    } catch (e: ActivityNotFoundException) {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/map/$label,$lat,$lng")))
+                        } catch (e2: ActivityNotFoundException) { /* 브라우저도 없는 기기 — 조용히 무시 */ }
+                    }
                 } else {
-                    Uri.parse("geo:0,0?q=$label")
-                }
-                try {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                } catch (e: ActivityNotFoundException) {
-                    // 지도 앱이 없는 기기 — 조용히 무시(스낵바 등은 디자인 확정 전까지 보류)
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/search/$label")))
+                    } catch (e: ActivityNotFoundException) { /* 조용히 무시 */ }
                 }
             },
             modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -1238,6 +1247,8 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
 
 @Composable
 fun PlaceInfoRow(label: String, value: String) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = RunWhite)) {
         Row(
@@ -1249,7 +1260,14 @@ fun PlaceInfoRow(label: String, value: String) {
                 Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                 Text(value, fontSize = 12.sp, color = RunGray)
             }
-            Icon(Icons.Filled.ChevronRight, null, tint = RunGray, modifier = Modifier.size(16.dp))
+            Icon(
+                Icons.Filled.ContentCopy, contentDescription = "$label 복사",
+                tint = RunGray,
+                modifier = Modifier.size(18.dp).clickable {
+                    clipboard.setText(AnnotatedString(value))
+                    Toast.makeText(context, "${label}를 복사했어요", Toast.LENGTH_SHORT).show()
+                }
+            )
         }
     }
 }
