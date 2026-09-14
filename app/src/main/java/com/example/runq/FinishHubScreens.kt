@@ -310,6 +310,7 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     EnvChip("☀️ ${safety?.temp?.let { "맑음 $it" } ?: "날씨 확인중"}", Color(0xFFFBF8D9), Modifier.weight(1f))
                     EnvChip("🍃 미세먼지 ${safety?.pm10 ?: "-"}", Color(0xFFF1F6EC), Modifier.weight(1f))
+                    EnvChip("💨 바람 ${safety?.wind ?: "-"}", Color(0xFFE9F1FB), Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(16.dp))
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(RunBorderGray))
@@ -1063,8 +1064,9 @@ fun PlacePickCard(no: Int, neighborhood: String, place: FinishHubPlace, onClick:
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            if (place.isCurated) "RunQ가 골라둔 스팟" else (place.addr.ifBlank { "코스 근처 스팟" }),
-            fontSize = 12.sp, color = RunGray
+            place.shortCopy?.takeIf { it.isNotBlank() }
+                ?: if (place.isCurated) "RunQ가 골라둔 스팟" else place.addr.ifBlank { "코스 근처 스팟" },
+            fontSize = 12.sp, color = RunGray, maxLines = 2
         )
     }
 }
@@ -1154,6 +1156,14 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
         )
         Spacer(Modifier.height(14.dp))
         when {
+            // RunQ 큐레이션 문구가 있으면 최우선으로 보여준다 (TourAPI contentId 유무와 무관).
+            !place.shortCopy.isNullOrBlank() -> {
+                Text(place.shortCopy, fontSize = 14.sp, color = RunBlack, lineHeight = 20.sp)
+                if (!place.recommendReason.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(place.recommendReason, fontSize = 13.sp, color = RunPurple, fontWeight = FontWeight.Medium, lineHeight = 18.sp)
+                }
+            }
             place.contentId == null -> Text(
                 "RunQ가 직접 고른 장소예요. 상세정보는 TourAPI 연동(P1) 이후 채워질 예정이에요.",
                 fontSize = 14.sp, color = RunGray

@@ -84,6 +84,7 @@ data class SafetyInfo(
     val temp: String,       // "22℃"
     val rain: String,       // "없음" / "있음"
     val pm10: String,       // "보통"
+    val wind: String,       // "2.3m/s"
     val fitness: String     // 종합 러닝 적합도
 )
 
@@ -112,6 +113,8 @@ suspend fun fetchSafety(grid: Pair<Int, Int>? = null): SafetyInfo {
     val temp = w.firstOrNull { it.category == "T1H" }?.obsrValue ?: "-"
     val rn1 = w.firstOrNull { it.category == "RN1" }?.obsrValue ?: "0"
     val rain = if (rn1 == "0" || rn1 == "강수없음") "없음" else "있음"
+    val windSpeed = w.firstOrNull { it.category == "WSD" }?.obsrValue?.toDoubleOrNull()
+    val wind = windSpeed?.let { "%.1fm/s".format(it) } ?: "-"
 
     // 미세먼지 (강릉 측정소 우선, 없으면 강원 첫 번째)
     val airList = AirClient.api.getAir().response.body?.items ?: emptyList()
@@ -122,6 +125,7 @@ suspend fun fetchSafety(grid: Pair<Int, Int>? = null): SafetyInfo {
     val fitness = when {
         rain == "있음" -> "우천 주의"
         pm10 == "나쁨" || pm10 == "매우나쁨" -> "대기질 주의"
+        windSpeed != null && windSpeed >= 8.0 -> "강풍 주의"
         else -> "좋음"
     }
 
@@ -129,6 +133,7 @@ suspend fun fetchSafety(grid: Pair<Int, Int>? = null): SafetyInfo {
         temp = if (temp == "-") "-" else "${temp}℃",
         rain = rain,
         pm10 = pm10,
+        wind = wind,
         fitness = fitness
     )
 }

@@ -197,8 +197,9 @@ fun TodaysRunCard(course: Course, safety: SafetyInfo?, onClick: () -> Unit) {
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        "${safety?.temp ?: "--"} · 미세먼지 ${safety?.pm10 ?: "-"} · 예상 ${course.timeLabel()}",
-                        fontSize = 12.sp, color = RunBlack.copy(alpha = 0.75f), modifier = Modifier.weight(1f)
+                        "${safety?.temp ?: "--"} · 미세먼지 ${safety?.pm10 ?: "-"} · 바람 ${safety?.wind ?: "-"} · 예상 ${course.timeLabel()}",
+                        fontSize = 12.sp, color = RunBlack.copy(alpha = 0.75f), modifier = Modifier.weight(1f),
+                        maxLines = 2
                     )
                     Box(
                         modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(RunBlack)

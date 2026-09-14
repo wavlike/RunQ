@@ -560,6 +560,7 @@ fun DetailScreen(
                 ) {
                     SafetyMetric("기온", s.temp)
                     SafetyMetric("미세먼지", s.pm10)
+                    SafetyMetric("바람", s.wind)
                     SafetyMetric("러닝 적합도", s.fitness)
                 }
             }
