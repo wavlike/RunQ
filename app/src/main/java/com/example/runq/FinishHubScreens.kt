@@ -664,7 +664,9 @@ object PlaceTabRequest {
 sealed class PlaceStep {
     object Home : PlaceStep()
     data class HubList(val hub: FinishHub, val category: PlaceCategory) : PlaceStep()
-    data class Detail(val hub: FinishHub, val place: FinishHubPlace) : PlaceStep()
+    // from: 상세화면으로 오기 전 화면 — 뒤로가기를 눌렀을 때 항상 Place 탭 홈이 아니라
+    // 실제로 들어왔던 화면(전체보기 목록 등)으로 돌아가기 위해 CourseStep.Detail과 같은 패턴을 사용.
+    data class Detail(val hub: FinishHub, val place: FinishHubPlace, val from: PlaceStep) : PlaceStep()
 }
 
 @Composable
@@ -672,13 +674,13 @@ fun PlaceFlow() {
     var step by remember {
         mutableStateOf<PlaceStep>(
             PlaceTabRequest.consumeDetail()?.let { place ->
-                findHub(place.finishHubId)?.let { hub -> PlaceStep.Detail(hub, place) }
+                findHub(place.finishHubId)?.let { hub -> PlaceStep.Detail(hub, place, PlaceStep.Home) }
             } ?: PlaceStep.Home
         )
     }
     when (val s = step) {
         is PlaceStep.Home -> PlaceHomeScreen(
-            onPlaceClick = { hub, place -> step = PlaceStep.Detail(hub, place) },
+            onPlaceClick = { hub, place -> step = PlaceStep.Detail(hub, place, PlaceStep.Home) },
             onSeeAll = { hub, category -> step = PlaceStep.HubList(hub, category) }
         )
         is PlaceStep.HubList -> HubPlacesScreen(
@@ -686,13 +688,13 @@ fun PlaceFlow() {
             contextLabel = s.hub.name,
             initialCategory = s.category,
             onBack = { step = PlaceStep.Home },
-            onPlaceClick = { place -> step = PlaceStep.Detail(s.hub, place) }
+            onPlaceClick = { place -> step = PlaceStep.Detail(s.hub, place, s) }
         )
         is PlaceStep.Detail -> PlaceDetailScreen(
             place = s.place,
             hubName = s.hub.name,
             hub = s.hub,
-            onBack = { step = PlaceStep.Home }
+            onBack = { step = s.from }
         )
     }
 }
