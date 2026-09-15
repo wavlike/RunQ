@@ -48,21 +48,23 @@ sealed class AuthStep {
     object SignUp : AuthStep()
     object LogIn : AuthStep()
     object PasswordRecovery : AuthStep()
-    data class Terms(val from: AuthStep) : AuthStep()
+    // gate=true: 가입하기 누르자마자 뜨는 필수 동의 화면(체크 안 하면 다음으로 못 감).
+    // gate=false: 가입 폼 안에서 "전체 약관 상세내용 보기"로 다시 열어보는 읽기용 화면.
+    data class Terms(val from: AuthStep, val gate: Boolean = false) : AuthStep()
 }
 
 @Composable
 fun AuthFlow(onAuthSuccess: () -> Unit) {
     var step by remember { mutableStateOf<AuthStep>(AuthStep.Entry) }
-    // 가입 폼 입력값을 AuthFlow에서 들고 있어야, "전체 약관 상세내용 보기"로 잠깐 Terms 화면에
-    // 다녀와도(=AuthSignUpScreen이 disposed/recreate) 입력하던 내용과 동의 체크가 안 날아간다.
+    // 가입 폼 입력값 + 동의 체크 상태를 AuthFlow에서 들고 있어야, 동의 화면 ↔ 가입 폼 사이를
+    // 오가도(=화면이 disposed/recreate) 입력하던 내용과 체크가 안 날아간다.
     var signUpEmail by remember { mutableStateOf("") }
     var signUpPassword by remember { mutableStateOf("") }
     var signUpNickname by remember { mutableStateOf("") }
     var signUpAgreed by remember { mutableStateOf(false) }
     when (val s = step) {
         is AuthStep.Entry -> AuthEntryScreen(
-            onSignUp = { step = AuthStep.SignUp },
+            onSignUp = { step = AuthStep.Terms(from = AuthStep.Entry, gate = true) },
             onLogIn = { step = AuthStep.LogIn },
             onBrowse = onAuthSuccess
         )
@@ -70,20 +72,26 @@ fun AuthFlow(onAuthSuccess: () -> Unit) {
             email = signUpEmail, onEmailChange = { signUpEmail = it },
             password = signUpPassword, onPasswordChange = { signUpPassword = it },
             nickname = signUpNickname, onNicknameChange = { signUpNickname = it },
-            agreedToTerms = signUpAgreed, onAgreedToTermsChange = { signUpAgreed = it },
+            agreedToTerms = signUpAgreed,
             onBack = { step = AuthStep.Entry },
             onCreateAccount = { onAuthSuccess() },
             onGoToLogin = { step = AuthStep.LogIn },
-            onOpenTerms = { step = AuthStep.Terms(s) }
+            onOpenTerms = { step = AuthStep.Terms(from = AuthStep.SignUp, gate = false) }
         )
         is AuthStep.LogIn -> AuthLogInScreen(
             onBack = { step = AuthStep.Entry },
             onLogin = { onAuthSuccess() },
             onForgotPassword = { step = AuthStep.PasswordRecovery },
-            onGoToSignUp = { step = AuthStep.SignUp }
+            onGoToSignUp = { step = AuthStep.Terms(from = AuthStep.LogIn, gate = true) }
         )
         is AuthStep.PasswordRecovery -> AuthPasswordRecoveryScreen(onBack = { step = AuthStep.LogIn })
-        is AuthStep.Terms -> AuthTermsScreen(onBack = { step = s.from })
+        is AuthStep.Terms -> AuthTermsScreen(
+            onBack = { step = s.from },
+            gate = s.gate,
+            agreed = signUpAgreed,
+            onAgreedChange = { signUpAgreed = it },
+            onContinue = { step = AuthStep.SignUp }
+        )
     }
 }
 
@@ -216,11 +224,13 @@ fun AuthSignUpScreen(
     email: String, onEmailChange: (String) -> Unit,
     password: String, onPasswordChange: (String) -> Unit,
     nickname: String, onNicknameChange: (String) -> Unit,
-    agreedToTerms: Boolean, onAgreedToTermsChange: (Boolean) -> Unit,
+    agreedToTerms: Boolean,
     onBack: () -> Unit, onCreateAccount: () -> Unit, onGoToLogin: () -> Unit, onOpenTerms: () -> Unit
 ) {
-    // 원스토어 심사 지적사항: 개인정보 수집 전 명시적 동의(체크박스)가 없어서 반려됨.
-    // 이제 이 체크박스에 체크해야만 가입하기가 활성화되도록 게이트를 건다.
+    // 원스토어 심사 지적사항: 개인정보 수집 전 명시적 동의가 없어서 반려됨.
+    // 이제 "가입하기"를 누르면 이 화면에 오기 전에 필수 동의 화면(AuthStep.Terms(gate=true))을
+    // 먼저 거치게 되어 있어서, agreedToTerms는 여기 도달했다면 항상 true — 혹시 모를 우회를
+    // 막는 안전장치로만 조건에 남겨둔다.
     val canSubmit = email.isNotBlank() && password.length >= 4 && nickname.isNotBlank() && agreedToTerms
 
     Box(modifier = Modifier.fillMaxSize().background(RunCream)) {
@@ -240,22 +250,10 @@ fun AuthSignUpScreen(
             AuthField(password, onPasswordChange, "비밀번호", Icons.Filled.Lock, isPassword = true)
             Spacer(Modifier.height(12.dp))
             AuthField(nickname, onNicknameChange, "닉네임", Icons.Filled.Person)
-            Spacer(Modifier.height(20.dp))
-            // 개인정보 수집·이용에 대한 명시적 동의 — 체크해야만 가입 진행 가능.
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Checkbox(
-                    checked = agreedToTerms,
-                    onCheckedChange = onAgreedToTermsChange,
-                    colors = CheckboxDefaults.colors(checkedColor = RunPurple)
-                )
-                Text(
-                    "(필수) RunQ 이용약관 및 개인정보 수집·이용에 동의합니다.",
-                    fontSize = 13.sp, color = RunBlack, modifier = Modifier.weight(1f).clickable { onAgreedToTermsChange(!agreedToTerms) }
-                )
-            }
+            Spacer(Modifier.height(16.dp))
             Text(
-                "전체 약관 상세내용 보기 >", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunPurple,
-                modifier = Modifier.padding(start = 44.dp).clickable { onOpenTerms() }
+                "이용약관 및 개인정보처리방침 다시 보기 >", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunPurple,
+                modifier = Modifier.clickable { onOpenTerms() }
             )
             Spacer(Modifier.height(20.dp))
             Button(
@@ -373,7 +371,13 @@ private val termsSections = listOf(
 )
 
 @Composable
-fun AuthTermsScreen(onBack: () -> Unit) {
+fun AuthTermsScreen(
+    onBack: () -> Unit,
+    gate: Boolean = false,
+    agreed: Boolean = false,
+    onAgreedChange: (Boolean) -> Unit = {},
+    onContinue: () -> Unit = onBack
+) {
     Column(modifier = Modifier.fillMaxSize().background(RunCream).verticalScroll(rememberScrollState()).padding(20.dp)) {
         Spacer(Modifier.height(40.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -412,12 +416,28 @@ fun AuthTermsScreen(onBack: () -> Unit) {
             }
         }
         Spacer(Modifier.height(20.dp))
+        if (gate) {
+            // 가입하기 진입 시 필수로 거치는 동의 게이트 — 체크해야만 다음으로 진행 가능.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Checkbox(
+                    checked = agreed,
+                    onCheckedChange = onAgreedChange,
+                    colors = CheckboxDefaults.colors(checkedColor = RunPurple)
+                )
+                Text(
+                    "(필수) 위 이용약관 및 개인정보 수집·이용에 동의합니다.",
+                    fontSize = 13.sp, color = RunBlack, modifier = Modifier.weight(1f).clickable { onAgreedChange(!agreed) }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
         Button(
-            onClick = onBack,
+            onClick = { if (gate) onContinue() else onBack() },
+            enabled = !gate || agreed,
             modifier = Modifier.fillMaxWidth().height(54.dp),
             shape = RoundedCornerShape(20.dp),
             colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
-        ) { Text("동의하고 계속하기", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+        ) { Text(if (gate) "동의하고 계속하기" else "닫기", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
         Spacer(Modifier.height(20.dp))
     }
 }
