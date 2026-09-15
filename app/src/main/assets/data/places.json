@@ -2076,7 +2076,7 @@
   },
   {
     "place_id": "cafe_i_001",
-    "place_name": "썬까페",
+    "place_name": "썬카페",
     "category": "CAFE",
     "finish_hub_id": "hub_i_09",
     "course_id": null,
@@ -2097,7 +2097,7 @@
     "display_order": 1,
     "status": "ACTIVE",
     "source_url": "https://burnt-emoji-4b6.notion.site/Finish-Hub-3be361dff860807388b9f1736e0c01e3?source=copy_link",
-    "content_owner_note": "Notion Finish Hub 큐레이션에서 입력. 주소/좌표/API ID/이미지 URL/실제 Hub 거리 검증 필요."
+    "content_owner_note": "Notion Finish Hub 큐레이션에서 입력. (2026-09-15 장소명 재검증 완료: 썬까페 → 썬카페)"
   },
   {
     "place_id": "cafe_i_002",
