@@ -54,6 +54,12 @@ sealed class AuthStep {
 @Composable
 fun AuthFlow(onAuthSuccess: () -> Unit) {
     var step by remember { mutableStateOf<AuthStep>(AuthStep.Entry) }
+    // 가입 폼 입력값을 AuthFlow에서 들고 있어야, "전체 약관 상세내용 보기"로 잠깐 Terms 화면에
+    // 다녀와도(=AuthSignUpScreen이 disposed/recreate) 입력하던 내용과 동의 체크가 안 날아간다.
+    var signUpEmail by remember { mutableStateOf("") }
+    var signUpPassword by remember { mutableStateOf("") }
+    var signUpNickname by remember { mutableStateOf("") }
+    var signUpAgreed by remember { mutableStateOf(false) }
     when (val s = step) {
         is AuthStep.Entry -> AuthEntryScreen(
             onSignUp = { step = AuthStep.SignUp },
@@ -61,6 +67,10 @@ fun AuthFlow(onAuthSuccess: () -> Unit) {
             onBrowse = onAuthSuccess
         )
         is AuthStep.SignUp -> AuthSignUpScreen(
+            email = signUpEmail, onEmailChange = { signUpEmail = it },
+            password = signUpPassword, onPasswordChange = { signUpPassword = it },
+            nickname = signUpNickname, onNicknameChange = { signUpNickname = it },
+            agreedToTerms = signUpAgreed, onAgreedToTermsChange = { signUpAgreed = it },
             onBack = { step = AuthStep.Entry },
             onCreateAccount = { onAuthSuccess() },
             onGoToLogin = { step = AuthStep.LogIn },
@@ -202,11 +212,16 @@ private fun AuthBackButton(onBack: () -> Unit) {
 
 // ── 02 Auth / Sign Up ────────────────────────────────
 @Composable
-fun AuthSignUpScreen(onBack: () -> Unit, onCreateAccount: () -> Unit, onGoToLogin: () -> Unit, onOpenTerms: () -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var nickname by remember { mutableStateOf("") }
-    val canSubmit = email.isNotBlank() && password.length >= 4 && nickname.isNotBlank()
+fun AuthSignUpScreen(
+    email: String, onEmailChange: (String) -> Unit,
+    password: String, onPasswordChange: (String) -> Unit,
+    nickname: String, onNicknameChange: (String) -> Unit,
+    agreedToTerms: Boolean, onAgreedToTermsChange: (Boolean) -> Unit,
+    onBack: () -> Unit, onCreateAccount: () -> Unit, onGoToLogin: () -> Unit, onOpenTerms: () -> Unit
+) {
+    // 원스토어 심사 지적사항: 개인정보 수집 전 명시적 동의(체크박스)가 없어서 반려됨.
+    // 이제 이 체크박스에 체크해야만 가입하기가 활성화되도록 게이트를 건다.
+    val canSubmit = email.isNotBlank() && password.length >= 4 && nickname.isNotBlank() && agreedToTerms
 
     Box(modifier = Modifier.fillMaxSize().background(RunCream)) {
         AmbientGlows(lime = -135 to -115, lavender = 230 to 15, limeSize = 290, lavenderSize = 280)
@@ -220,12 +235,29 @@ fun AuthSignUpScreen(onBack: () -> Unit, onCreateAccount: () -> Unit, onGoToLogi
             Spacer(Modifier.height(10.dp))
             Text("계정을 만들고 나만의 러닝 코스와 기록을 저장해보세요.", fontSize = 13.sp, color = RunGray)
             Spacer(Modifier.height(30.dp))
-            AuthField(email, { email = it }, "이메일", Icons.Filled.Email, keyboardType = KeyboardType.Email)
+            AuthField(email, onEmailChange, "이메일", Icons.Filled.Email, keyboardType = KeyboardType.Email)
             Spacer(Modifier.height(12.dp))
-            AuthField(password, { password = it }, "비밀번호", Icons.Filled.Lock, isPassword = true)
+            AuthField(password, onPasswordChange, "비밀번호", Icons.Filled.Lock, isPassword = true)
             Spacer(Modifier.height(12.dp))
-            AuthField(nickname, { nickname = it }, "닉네임", Icons.Filled.Person)
-            Spacer(Modifier.height(24.dp))
+            AuthField(nickname, onNicknameChange, "닉네임", Icons.Filled.Person)
+            Spacer(Modifier.height(20.dp))
+            // 개인정보 수집·이용에 대한 명시적 동의 — 체크해야만 가입 진행 가능.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Checkbox(
+                    checked = agreedToTerms,
+                    onCheckedChange = onAgreedToTermsChange,
+                    colors = CheckboxDefaults.colors(checkedColor = RunPurple)
+                )
+                Text(
+                    "(필수) RunQ 이용약관 및 개인정보 수집·이용에 동의합니다.",
+                    fontSize = 13.sp, color = RunBlack, modifier = Modifier.weight(1f).clickable { onAgreedToTermsChange(!agreedToTerms) }
+                )
+            }
+            Text(
+                "전체 약관 상세내용 보기 >", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunPurple,
+                modifier = Modifier.padding(start = 44.dp).clickable { onOpenTerms() }
+            )
+            Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
                     ProfileStore.nickname = nickname
@@ -241,11 +273,6 @@ fun AuthSignUpScreen(onBack: () -> Unit, onCreateAccount: () -> Unit, onGoToLogi
                 Text("이미 계정이 있나요? ", fontSize = 13.sp, color = RunGray)
                 Text("로그인", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunPurple, modifier = Modifier.clickable { onGoToLogin() })
             }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "가입하면 RunQ 이용약관 및 개인정보처리방침에 동의하게 됩니다.",
-                fontSize = 11.sp, color = RunGray, modifier = Modifier.clickable { onOpenTerms() }
-            )
             Spacer(Modifier.height(24.dp))
         }
     }
