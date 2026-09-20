@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1262,6 +1263,10 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
     var detail by remember { mutableStateOf<DetailCommonItem?>(null) }
     var loading by remember { mutableStateOf(place.contentId != null) }
     var kakaoInfo by remember { mutableStateOf<KakaoPlaceLookup?>(null) }
+    // 장소 목록(PlaceListCard)엔 이미 있던 저장 하트가 상세화면엔 없어서 여기서 저장할
+    // 방법이 아예 없었다 — 목록과 동일한 SavedItemsStore로 상세화면에도 추가.
+    val placeId = place.id
+    var isSaved by remember(placeId) { mutableStateOf(placeId?.let { SavedItemsStore.isPlaceSaved(it) } ?: false) }
 
     LaunchedEffect(place.contentId) {
         val id = place.contentId
@@ -1354,31 +1359,40 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
             Spacer(Modifier.height(16.dp))
         }
 
-        Button(
-            onClick = {
-                val lat = kakaoInfo?.lat ?: place.lat ?: hub?.resolvedLat
-                val lng = kakaoInfo?.lng ?: place.lng ?: hub?.resolvedLng
-                val label = Uri.encode(place.title)
-                // 앱 전체가 카카오맵 기반이므로 "지도에서 보기"도 (기기의 기본 지도 앱이 아니라)
-                // 카카오맵 앱으로 바로 연다. 카카오맵 앱이 없으면 브라우저의 카카오맵 웹으로 폴백.
-                if (lat != null && lng != null) {
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("kakaomap://look?p=$lat,$lng")))
-                    } catch (e: ActivityNotFoundException) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = { placeId?.let { SavedItemsStore.togglePlace(it); isSaved = !isSaved } },
+                modifier = Modifier.weight(0.4f).height(54.dp),
+                shape = RoundedCornerShape(27.dp),
+                border = BorderStroke(1.5.dp, if (isSaved) RunPurple else RunBorderGray),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isSaved) RunPurple else RunBlack)
+            ) { Text(if (isSaved) "♥ 저장됨" else "♡ 저장하기", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+            Button(
+                onClick = {
+                    val lat = kakaoInfo?.lat ?: place.lat ?: hub?.resolvedLat
+                    val lng = kakaoInfo?.lng ?: place.lng ?: hub?.resolvedLng
+                    val label = Uri.encode(place.title)
+                    // 앱 전체가 카카오맵 기반이므로 "여기로 달리기"도 (기기의 기본 지도 앱이 아니라)
+                    // 카카오맵 앱으로 바로 연다. 카카오맵 앱이 없으면 브라우저의 카카오맵 웹으로 폴백.
+                    if (lat != null && lng != null) {
                         try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/map/$label,$lat,$lng")))
-                        } catch (e2: ActivityNotFoundException) { /* 브라우저도 없는 기기 — 조용히 무시 */ }
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("kakaomap://look?p=$lat,$lng")))
+                        } catch (e: ActivityNotFoundException) {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/map/$label,$lat,$lng")))
+                            } catch (e2: ActivityNotFoundException) { /* 브라우저도 없는 기기 — 조용히 무시 */ }
+                        }
+                    } else {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/search/$label")))
+                        } catch (e: ActivityNotFoundException) { /* 조용히 무시 */ }
                     }
-                } else {
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/search/$label")))
-                    } catch (e: ActivityNotFoundException) { /* 조용히 무시 */ }
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(27.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = RunBlack, contentColor = RunWhite)
-        ) { Text("지도에서 보기", fontWeight = FontWeight.Bold) }
+                },
+                modifier = Modifier.weight(0.6f).height(54.dp),
+                shape = RoundedCornerShape(27.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = RunLime, contentColor = RunBlack)
+            ) { Text("→ 여기로 달리기", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+        }
         Spacer(Modifier.height(8.dp))
     }
 }

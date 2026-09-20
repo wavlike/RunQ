@@ -104,6 +104,7 @@ object SavedItemsStore {
 object ProfileStore {
     private const val KEY_NICKNAME = "profile_nickname"
     private const val KEY_PUSH = "profile_push_enabled"
+    private const val KEY_AVATAR_URI = "profile_avatar_uri"
 
     var nickname: String
         get() = prefs.getString(KEY_NICKNAME, "러너") ?: "러너"
@@ -112,6 +113,12 @@ object ProfileStore {
     var pushEnabled: Boolean
         get() = prefs.getBoolean(KEY_PUSH, true)
         set(value) { prefs.edit().putBoolean(KEY_PUSH, value).apply() }
+
+    // 기기 갤러리에서 고른 사진의 URI. 픽커에서 받은 콘텐츠 URI를 그대로 저장하며,
+    // 앱 재시작 후에도 읽을 수 있도록 지속 권한(takePersistableUriPermission)을 같이 받아둔다.
+    var avatarUri: String?
+        get() = prefs.getString(KEY_AVATAR_URI, null)
+        set(value) { prefs.edit().putString(KEY_AVATAR_URI, value).apply() }
 }
 
 // 회원탈퇴/로그아웃 시 기기에 남은 러닝 기록·저장 목록·프로필을 모두 지운다.

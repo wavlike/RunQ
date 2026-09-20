@@ -1,5 +1,11 @@
 package com.example.runq
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,10 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 
 // ════════════════════════════════════════════════════════
 // My 탭: Figma "40~46 My/*" 기준. 실제 서버 계정이 없어서 로그인/러닝 기록/저장 목록/
@@ -83,6 +92,26 @@ private fun MyBackHeader(title: String, onBack: () -> Unit) {
     }
 }
 
+// 갤러리에서 고른 프로필 사진(ProfileStore.avatarUri)이 있으면 그 사진을, 없으면 기존
+// 사람 아이콘 placeholder를 보여준다. Overview/Edit Profile 두 곳에서 같이 쓴다.
+@Composable
+fun ProfileAvatar(sizeDp: Int, modifier: Modifier = Modifier) {
+    val avatarUri = ProfileStore.avatarUri
+    Box(
+        modifier = modifier.size(sizeDp.dp).clip(CircleShape).background(RunLime.copy(alpha = 0.5f)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (avatarUri != null) {
+            AsyncImage(
+                model = avatarUri, contentDescription = null,
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(Icons.Filled.Person, contentDescription = null, tint = RunBlack, modifier = Modifier.size((sizeDp * 0.48f).dp))
+        }
+    }
+}
+
 // ── 40 My / Overview ─────────────────────────────────
 @Composable
 fun MyOverviewScreen(onOpenHistory: () -> Unit, onOpenSaved: () -> Unit, onOpenSettings: () -> Unit, onEditProfile: () -> Unit) {
@@ -98,10 +127,7 @@ fun MyOverviewScreen(onOpenHistory: () -> Unit, onOpenSaved: () -> Unit, onOpenS
         Text("나의 러닝과 저장 목록을 한눈에", fontSize = 13.sp, color = RunGray)
         Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onEditProfile() }) {
-            Box(
-                modifier = Modifier.size(58.dp).clip(CircleShape).background(RunLime.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Filled.Person, contentDescription = null, tint = RunBlack, modifier = Modifier.size(28.dp)) }
+            ProfileAvatar(sizeDp = 58)
             Spacer(Modifier.width(14.dp))
             Column {
                 Text("$nickname 님", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = RunBlack)
@@ -423,6 +449,7 @@ private fun SavedPlaceCard(place: FinishHubPlace) {
 // ── 44 My / Settings ─────────────────────────────────
 @Composable
 fun MySettingsScreen(onBack: () -> Unit, onDeleteAccount: () -> Unit, onLogout: () -> Unit) {
+    val context = LocalContext.current
     var pushEnabled by remember { mutableStateOf(ProfileStore.pushEnabled) }
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream).verticalScroll(rememberScrollState()).padding(20.dp)) {
@@ -455,7 +482,14 @@ fun MySettingsScreen(onBack: () -> Unit, onDeleteAccount: () -> Unit, onLogout: 
                     )
                 }
                 MyMenuDivider()
-                SettingsLinkRow("위치 정보 권한 설정", "러닝 기록 및 현재 위치 사용") { /* 시스템 앱 설정으로 이동은 다음 단계 */ }
+                SettingsLinkRow("위치 정보 권한 설정", "러닝 기록 및 현재 위치 사용") {
+                    // 앱 자체에는 권한 상태를 바꾸는 API가 없어서(OS 정책), 이 앱의 시스템
+                    // 설정 상세 화면으로 보내 사용자가 직접 권한을 켜고 끌 수 있게 한다.
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", context.packageName, null)
+                    }
+                    context.startActivity(intent)
+                }
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -467,7 +501,11 @@ fun MySettingsScreen(onBack: () -> Unit, onDeleteAccount: () -> Unit, onLogout: 
                 .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(18.dp))
         ) {
             Column {
-                SettingsLinkRow("비밀번호 변경", null) { /* 실제 계정 시스템 붙기 전까지는 자리표시 */ }
+                SettingsLinkRow("비밀번호 변경", null) {
+                    // 실제 서버 계정 시스템이 붙기 전까지는 바꿀 비밀번호 자체가 없어서
+                    // 조용히 아무 반응 없는 버튼 대신, 준비 중이라는 걸 명확히 알려준다.
+                    Toast.makeText(context, "아직 준비 중인 기능이에요", Toast.LENGTH_SHORT).show()
+                }
                 MyMenuDivider()
                 SettingsLinkRow("로그아웃", null, onClick = onLogout)
             }
@@ -518,7 +556,24 @@ private fun SettingsLinkRow(title: String, subtitle: String?, onClick: () -> Uni
 // ── 45 My / Edit Profile ─────────────────────────────
 @Composable
 fun MyEditProfileScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     var nickname by remember { mutableStateOf(ProfileStore.nickname) }
+    var avatarUri by remember { mutableStateOf(ProfileStore.avatarUri) }
+
+    // 시스템 사진 선택기(Android 13+는 Photo Picker, 이전 버전은 문서 선택기로 자동 대체됨) —
+    // 별도 런타임 권한이 필요 없다. 고른 사진은 앱을 재시작해도 계속 보이도록
+    // 지속 읽기 권한을 함께 받아 저장한다.
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            avatarUri = uri.toString()
+            ProfileStore.avatarUri = uri.toString()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream).verticalScroll(rememberScrollState()).padding(20.dp)) {
         Spacer(Modifier.height(40.dp))
@@ -538,14 +593,25 @@ fun MyEditProfileScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Text("PROFILE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = RunPurple)
         Spacer(Modifier.height(16.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val pickPhoto = {
+            photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
+        Box(modifier = Modifier.fillMaxWidth().clickable { pickPhoto() }, contentAlignment = Alignment.Center) {
             Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(RunLime.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = RunBlack, modifier = Modifier.size(38.dp))
+                if (avatarUri != null) {
+                    AsyncImage(
+                        model = avatarUri, contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                } else {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = RunBlack, modifier = Modifier.size(38.dp))
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            "프로필 사진 변경", fontSize = 13.sp, color = RunGray, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center
+            "프로필 사진 변경", fontSize = 13.sp, color = RunGray,
+            modifier = Modifier.fillMaxWidth().clickable { pickPhoto() }, textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(28.dp))
         Text("닉네임", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunBlack)
