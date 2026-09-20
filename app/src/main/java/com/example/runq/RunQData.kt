@@ -147,6 +147,7 @@ object RunQData {
                 addr = p.address ?: "",
                 category = category,
                 contentId = p.tourapi_content_id,
+                contentTypeId = p.content_type_id,
                 distMeters = p.distance_from_hub_m?.let { it.toInt().toString() },
                 id = p.place_id,
                 finishHubId = p.finish_hub_id,

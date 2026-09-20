@@ -69,6 +69,7 @@ data class FinishHubPlace(
     val addr: String,
     val category: PlaceCategory,
     val contentId: String? = null,     // TourAPI 결과일 때만 값이 있음 → Place Detail에서 상세조회 가능
+    val contentTypeId: String? = null, // TourAPI 콘텐츠타입(12관광지/39음식점/15행사 등) — detailIntro2 조회에 필요
     val distMeters: String? = null,    // TourAPI dist(m) 또는 distance_from_hub_m
     val id: String? = null,            // place_id (RunQ 큐레이션 항목만)
     val finishHubId: String? = null,
@@ -159,6 +160,7 @@ private fun TourPlace.toFinishHubPlace(category: PlaceCategory): FinishHubPlace 
     addr = addr1 ?: "",
     category = category,
     contentId = contentId,
+    contentTypeId = contentTypeId,
     distMeters = dist,
     lat = mapY?.toDoubleOrNull(),
     lng = mapX?.toDoubleOrNull(),
@@ -231,6 +233,7 @@ suspend fun fetchFestivals(): List<FinishHubPlace> {
             addr = f.addr1 ?: "",
             category = PlaceCategory.EVENT,
             contentId = f.contentId,
+            contentTypeId = "15", // searchFestival2 결과는 항상 행사(15) 콘텐츠타입
             lat = f.mapY?.toDoubleOrNull(),
             lng = f.mapX?.toDoubleOrNull(),
             eventStartDate = f.eventStartDate,
@@ -1254,13 +1257,27 @@ fun PlacePhotoPlaceholder(accent: Color, heightDp: Int, imageUrl: String? = null
     }
 }
 
+// 카카오맵 앱으로 열고, 앱이 없으면 브라우저의 카카오맵 웹으로 폴백한다.
+// (지도 보기/길찾기 등 여러 곳에서 반복되던 try-catch 폴백을 하나로 모음)
+private fun openKakaoMapUri(context: android.content.Context, appUri: String, webUri: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(appUri)))
+    } catch (e: ActivityNotFoundException) {
+        try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webUri))) }
+        catch (e2: ActivityNotFoundException) { /* 브라우저도 없는 기기 — 조용히 무시 */ }
+    }
+}
+
 // ════════════════════════════════════════════════════════
 // Place Detail: "35 Places/Detail.png" — contentId가 있으면 detailCommon2로 상세조회
 // ════════════════════════════════════════════════════════
 @Composable
 fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: FinishHub? = null, onBack: () -> Unit) {
     val context = LocalContext.current
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     var detail by remember { mutableStateOf<DetailCommonItem?>(null) }
+    var intro by remember { mutableStateOf<DetailIntroItem?>(null) }
     var loading by remember { mutableStateOf(place.contentId != null) }
     var kakaoInfo by remember { mutableStateOf<KakaoPlaceLookup?>(null) }
     // 장소 목록(PlaceListCard)엔 이미 있던 저장 하트가 상세화면엔 없어서 여기서 저장할
@@ -1278,14 +1295,27 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
                 android.util.Log.w("PlaceDetail", "detailCommon2 실패 (contentId=$id, title=${place.title})", it)
             }.getOrNull()
             loading = false
+
+            // 운영시간/휴무일은 detailIntro2에만 있다. contentTypeId는 실제로 있으면 그 값을,
+            // 없으면 카테고리로 대략 추정(EAT/CAFE→39 음식점, SEE→12 관광지)해서 요청하고,
+            // 최종적으로는 응답이 스스로 알려주는 contenttypeid 기준으로 필드를 골라 읽는다.
+            val typeId = place.contentTypeId ?: when (place.category) {
+                PlaceCategory.EAT, PlaceCategory.CAFE -> "39"
+                PlaceCategory.SEE -> "12"
+                PlaceCategory.EVENT -> "15"
+            }
+            intro = runCatching {
+                TourApiClient.api.getDetailIntro(contentId = id, contentTypeId = typeId).response.body.items?.item?.firstOrNull()
+            }.onFailure {
+                android.util.Log.w("PlaceDetail", "detailIntro2 실패 (contentId=$id, title=${place.title})", it)
+            }.getOrNull()
         }
     }
 
-    // 엑셀에 주소/좌표가 비어있는 RunQ 큐레이션 장소만 Kakao Local 검색으로 보완한다.
-    LaunchedEffect(place.id) {
-        if (place.addr.isBlank() || place.lat == null || place.lng == null) {
-            kakaoInfo = fetchKakaoPlaceInfo(place.title)
-        }
+    // 전화/영업시간 등 큐레이션 DB에 없는 정보를 보완하고, 카테고리 태그도 여기서 얻는다
+    // (Kakao Local의 category_name 기반) — 주소가 이미 있어도 이 두 가지 때문에 항상 조회한다.
+    LaunchedEffect(place.id, place.title) {
+        kakaoInfo = fetchKakaoPlaceInfo(place.title)
     }
 
     Column(
@@ -1322,6 +1352,16 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
                     .ifBlank { place.category.label },
             fontSize = 13.sp, color = RunGray
         )
+        if (kakaoInfo?.tags?.isNotEmpty() == true) {
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                kakaoInfo?.tags?.forEach { tag ->
+                    Box(modifier = Modifier.clip(RoundedCornerShape(11.dp)).background(RunBgGray).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                        Text(tag, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = RunGray)
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(14.dp))
         when {
             // RunQ 큐레이션 문구가 있으면 최우선으로 보여준다 (TourAPI contentId 유무와 무관).
@@ -1344,7 +1384,11 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
 
         PlaceInfoRow("주소", (detail?.addr1 ?: place.addr).ifBlank { kakaoInfo?.address ?: "주소 정보 준비중" })
         Spacer(Modifier.height(10.dp))
-        PlaceInfoRow("전화", kakaoInfo?.phone ?: "정보 없음")
+        PlaceInfoRow("전화", detail?.tel?.takeIf { it.isNotBlank() } ?: kakaoInfo?.phone ?: "정보 없음")
+        intro?.hoursLabel()?.let { hours ->
+            Spacer(Modifier.height(10.dp))
+            PlaceInfoRow("운영시간", hours + (intro?.restDateLabel()?.let { " · 휴무 $it" } ?: ""))
+        }
         Spacer(Modifier.height(20.dp))
 
         val kakaoPlaceUrl = kakaoInfo?.placeUrl
@@ -1369,23 +1413,35 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
             ) { Text(if (isSaved) "♥ 저장됨" else "♡ 저장하기", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
             Button(
                 onClick = {
-                    val lat = kakaoInfo?.lat ?: place.lat ?: hub?.resolvedLat
-                    val lng = kakaoInfo?.lng ?: place.lng ?: hub?.resolvedLng
+                    val destLat = kakaoInfo?.lat ?: place.lat ?: hub?.resolvedLat
+                    val destLng = kakaoInfo?.lng ?: place.lng ?: hub?.resolvedLng
                     val label = Uri.encode(place.title)
-                    // 앱 전체가 카카오맵 기반이므로 "여기로 달리기"도 (기기의 기본 지도 앱이 아니라)
-                    // 카카오맵 앱으로 바로 연다. 카카오맵 앱이 없으면 브라우저의 카카오맵 웹으로 폴백.
-                    if (lat != null && lng != null) {
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("kakaomap://look?p=$lat,$lng")))
-                        } catch (e: ActivityNotFoundException) {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/map/$label,$lat,$lng")))
-                            } catch (e2: ActivityNotFoundException) { /* 브라우저도 없는 기기 — 조용히 무시 */ }
-                        }
-                    } else {
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/search/$label")))
-                        } catch (e: ActivityNotFoundException) { /* 조용히 무시 */ }
+                    if (destLat == null || destLng == null) {
+                        try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://map.kakao.com/link/search/$label"))) }
+                        catch (e: ActivityNotFoundException) { /* 조용히 무시 */ }
+                        return@Button
+                    }
+                    val lookOnlyUri = "kakaomap://look?p=$destLat,$destLng"
+                    val webUri = "https://map.kakao.com/link/map/$label,$destLat,$destLng"
+                    val hasLocationPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    if (!hasLocationPermission) {
+                        // 지금 탭에서는 위치를 못 얻으니 목적지만 보여주고, 권한은 다음 탭을 위해 요청해둔다.
+                        locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        openKakaoMapUri(context, lookOnlyUri, webUri)
+                        return@Button
+                    }
+                    // 현재 위치 → 이 장소까지, 카카오맵 앱의 실제 도보 경로 안내로 바로 연결한다
+                    // (우리 앱엔 자체 길찾기 엔진이 없어서, 실제 도로를 따르는 경로는 카카오맵의
+                    // 진짜 경로안내 기능을 그대로 활용하는 게 직선 거리 표시보다 훨씬 정확하다).
+                    try {
+                        fusedLocationClient.lastLocation
+                            .addOnSuccessListener { loc ->
+                                val uri = if (loc != null) "kakaomap://route?sp=${loc.latitude},${loc.longitude}&ep=$destLat,$destLng&by=FOOT" else lookOnlyUri
+                                openKakaoMapUri(context, uri, webUri)
+                            }
+                            .addOnFailureListener { openKakaoMapUri(context, lookOnlyUri, webUri) }
+                    } catch (e: SecurityException) {
+                        openKakaoMapUri(context, lookOnlyUri, webUri)
                     }
                 },
                 modifier = Modifier.weight(0.6f).height(54.dp),

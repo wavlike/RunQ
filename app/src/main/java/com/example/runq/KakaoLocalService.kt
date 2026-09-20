@@ -40,6 +40,7 @@ interface KakaoLocalApi {
 data class KakaoLocalResponse(@SerializedName("documents") val documents: List<KakaoLocalPlace>)
 data class KakaoLocalPlace(
     @SerializedName("place_name") val placeName: String?,
+    @SerializedName("category_name") val categoryName: String?, // "음식점 > 카페 > 커피전문점" 형태 — 태그로 씀
     @SerializedName("address_name") val addressName: String?,
     @SerializedName("road_address_name") val roadAddressName: String?,
     @SerializedName("phone") val phone: String?,
@@ -65,8 +66,25 @@ data class KakaoPlaceLookup(
     val lat: Double?,
     val lng: Double?,
     val phone: String?,
-    val placeUrl: String?
+    val placeUrl: String?,
+    val tags: List<String> = emptyList()
 )
+
+// category_name은 "음식점 > 카페 > 커피전문점"처럼 대분류→소분류 순서라, 앞의 뻔한
+// 대분류(음식점/카페/관광명소 등)는 버리고 실제로 구체적인 뒤쪽 1~2개만 태그로 쓴다.
+// 큐레이션 문구(short_copy 등)처럼 사람이 고른 감상형 태그(예: "넓은 공간")는 API로 만들 수
+// 없어서 뺐다 — 여기 나오는 태그는 전부 카카오가 실제로 분류한 카테고리 값 그대로다.
+private val genericCategorySegments = setOf(
+    "음식점", "카페", "관광명소", "관광,명소", "여행", "숙박", "가정,생활", "문화,예술,종교"
+)
+
+private fun deriveTags(categoryName: String?): List<String> {
+    if (categoryName.isNullOrBlank()) return emptyList()
+    return categoryName.split(">")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && it !in genericCategorySegments }
+        .takeLast(2)
+}
 
 // REST 키가 없으면(local.properties 미설정) 호출하지 않고 null 반환.
 // "강릉"을 붙여 검색해 동명 상호 오검색을 줄인다.
@@ -83,7 +101,8 @@ suspend fun fetchKakaoPlaceInfo(placeName: String): KakaoPlaceLookup? {
             lat = result.y?.toDoubleOrNull(),
             lng = result.x?.toDoubleOrNull(),
             phone = result.phone?.takeIf { it.isNotBlank() },
-            placeUrl = result.placeUrl
+            placeUrl = result.placeUrl,
+            tags = deriveTags(result.categoryName)
         )
     }.getOrNull()
 }

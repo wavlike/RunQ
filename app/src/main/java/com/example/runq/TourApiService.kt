@@ -40,6 +40,17 @@ interface TourApi {
         @Query("overviewYN") overviewYN: String = "Y"
     ): DetailCommonResponse
 
+    // 장소 소개 상세 (운영시간/휴무일 등 — 콘텐츠타입별로 필드명이 다름, detailIntro2가 원본)
+    @GET("detailIntro2")
+    suspend fun getDetailIntro(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("contentId") contentId: String,
+        @Query("contentTypeId") contentTypeId: String
+    ): DetailIntroResponse
+
     // 강릉 행사/축제 (Place 탭의 "행사" 카테고리)
     // lDongRegnCd/lDongSignguCd = 법정동코드(지역): 강원특별자치도=51, 강릉시=150
     @GET("searchFestival2")
