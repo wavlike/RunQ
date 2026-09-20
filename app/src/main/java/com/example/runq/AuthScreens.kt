@@ -150,8 +150,8 @@ fun AuthEntryScreen(onSignUp: () -> Unit, onLogIn: () -> Unit, onBrowse: () -> U
             ) { Text("로그인", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
             Spacer(Modifier.height(14.dp))
             Text(
-                "둘러보기", fontSize = 12.sp, color = RunWhite.copy(alpha = 0.68f),
-                modifier = Modifier.fillMaxWidth().clickable { onBrowse() }, textAlign = TextAlign.Center
+                "둘러보기", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = RunWhite.copy(alpha = 0.68f),
+                modifier = Modifier.fillMaxWidth().clickable { onBrowse() }.padding(vertical = 4.dp), textAlign = TextAlign.Center
             )
         }
     }
