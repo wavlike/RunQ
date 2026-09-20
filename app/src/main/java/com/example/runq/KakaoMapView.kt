@@ -200,36 +200,6 @@ fun KakaoPlacesMap(
     }
 }
 
-/**
- * 경로(points)를 따라 진행률(progress, 0~1)에 해당하는 지점을 선형보간으로 계산.
- * 실제 GPS 트래킹이 붙기 전까지 "지금 위치" 시뮬레이션에 쓴다 (지구 곡률 무시한 단순 근사).
- */
-fun interpolateAlongRoute(points: List<RoutePoint>, progress: Float): RoutePoint? {
-    if (points.isEmpty()) return null
-    val p = progress.coerceIn(0f, 1f)
-    if (points.size == 1 || p <= 0f) return points.first()
-    if (p >= 1f) return points.last()
-
-    val segLengths = (1 until points.size).map { i ->
-        val a = points[i - 1]; val b = points[i]
-        kotlin.math.hypot(b.lat - a.lat, b.lng - a.lng)
-    }
-    val total = segLengths.sum()
-    if (total <= 0.0) return points.first()
-
-    var target = total * p
-    for (i in segLengths.indices) {
-        val segLen = segLengths[i]
-        if (target <= segLen || i == segLengths.lastIndex) {
-            val t = if (segLen > 0) (target / segLen).coerceIn(0.0, 1.0) else 0.0
-            val a = points[i]; val b = points[i + 1]
-            return RoutePoint(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t)
-        }
-        target -= segLen
-    }
-    return points.last()
-}
-
 private fun effectiveLine(routePoints: List<RoutePoint>, start: RoutePoint?, finish: RoutePoint?): List<RoutePoint> =
     when {
         routePoints.size >= 2 -> routePoints

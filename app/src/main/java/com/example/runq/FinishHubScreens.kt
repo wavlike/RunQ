@@ -1,9 +1,13 @@
 package com.example.runq
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +38,12 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.delay
 
 // ════════════════════════════════════════════════════════
@@ -356,30 +366,82 @@ private fun EnvChip(text: String, color: Color, modifier: Modifier = Modifier) {
 // ════════════════════════════════════════════════════════
 @Composable
 fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSeconds: Int) -> Unit) {
-    var distance by remember { mutableStateOf(0.0) }
-    var elapsedSeconds by remember { mutableStateOf(0) }
+    val context = LocalContext.current
     var running by remember { mutableStateOf(true) }
+    var elapsedSeconds by remember { mutableStateOf(0) }
+    var hasFix by remember { mutableStateOf(false) }
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        )
+    }
     val targetKm = remember(course) { course.resolvedDistanceKm()?.takeIf { it > 0 } ?: 5.0 }
+    val routePoints = course.routePoints
+
+    // totalDistanceKm: GPS로 실측한 실제 이동 거리(페이스 계산용) / progressKm: 코스 경로 위로
+    // 투영한 진행 거리(진행률·완주 거리 표시용) — RunningScreen(Run 탭)과 동일한 방식.
+    var totalDistanceKm by remember { mutableStateOf(0.0) }
+    var progressKm by remember { mutableStateOf(0.0) }
+    val displayDistanceKm = if (routePoints.isNotEmpty()) progressKm else totalDistanceKm
+
+    var currentLocation by remember { mutableStateOf(course.startPoint() ?: RoutePoint(37.7946, 128.9022)) }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        hasLocationPermission = isGranted
+    }
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    DisposableEffect(hasLocationPermission, running) {
+        if (!hasLocationPermission || !running) return@DisposableEffect onDispose {}
+
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+            .setMinUpdateDistanceMeters(3f)
+            .build()
+
+        val locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val lastLocation = result.lastLocation ?: return
+                val newPoint = RoutePoint(lastLocation.latitude, lastLocation.longitude)
+
+                if (hasFix) {
+                    val d = haversineMeters(currentLocation.lat, currentLocation.lng, newPoint.lat, newPoint.lng) / 1000.0
+                    totalDistanceKm += d
+                }
+
+                currentLocation = newPoint
+                hasFix = true
+
+                if (routePoints.isNotEmpty()) {
+                    progressKm = distanceAlongRouteToClosestPoint(routePoints, newPoint)
+                }
+            }
+        }
+
+        try {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, context.mainLooper)
+        } catch (e: SecurityException) { }
+
+        onDispose {
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+        }
+    }
 
     LaunchedEffect(running) {
         while (running) {
             delay(1000)
-            distance += 0.01
             elapsedSeconds += 1
         }
     }
 
-    // GPS 실측 연동 전까지는 진행률(거리/목표거리)을 코스 경로에 투영해서 현재 위치처럼 보여준다.
-    val simulatedLocation = remember(course, distance, targetKm) {
-        val line = if (course.routePoints.size >= 2) course.routePoints
-            else listOfNotNull(course.startPoint(), course.finishPoint())
-        interpolateAlongRoute(line, (distance / targetKm).toFloat())
-    }
-    val progress = remember(distance, targetKm) { (distance / targetKm).toFloat().coerceIn(0f, 1f) }
+    val progress = remember(displayDistanceKm, targetKm) { (displayDistanceKm / targetKm).toFloat().coerceIn(0f, 1f) }
 
-    val paceLabel = remember(distance, elapsedSeconds) {
-        if (distance < 0.01) "0'00\"" else {
-            val paceSec = (elapsedSeconds / distance).toInt()
+    val paceLabel = remember(totalDistanceKm, elapsedSeconds) {
+        if (totalDistanceKm < 0.01) "0'00\"" else {
+            val paceSec = (elapsedSeconds / totalDistanceKm).toInt()
             "${paceSec / 60}'${(paceSec % 60).toString().padStart(2, '0')}\""
         }
     }
@@ -393,10 +455,29 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
             Spacer(Modifier.height(20.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 UtilityPill("잠금", Modifier.weight(1f))
-                UtilityPill("설정", Modifier.weight(1f))
+                UtilityPill(
+                    if (!hasLocationPermission) "위치 권한 필요" else if (hasFix) "GPS" else "GPS 찾는 중",
+                    Modifier.weight(1f)
+                )
             }
             Spacer(Modifier.height(14.dp))
-            CourseMapCard(course = course, currentLocation = simulatedLocation, heightDp = 300)
+            if (hasLocationPermission) {
+                CourseMapCard(course = course, currentLocation = currentLocation, heightDp = 300)
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(24.dp))
+                        .background(RunBgGray),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PermissionPromptView(
+                        icon = "📍", title = "위치 권한이 필요해요",
+                        message = "실시간 위치 표시와 거리 측정을 위해 위치 권한을 허용해주세요.",
+                        actionLabel = "권한 허용하기",
+                        onAction = { launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                        modifier = Modifier.padding(20.dp)
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(course.name, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunBlack)
@@ -408,12 +489,12 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
             }
             Spacer(Modifier.height(6.dp))
             Text(
-                "${String.format("%.2f", distance)} / ${course.distanceLabel()}",
+                "${String.format("%.2f", displayDistanceKm)} / ${course.distanceLabel()}",
                 fontSize = 10.sp, color = RunGray
             )
             Spacer(Modifier.height(24.dp))
             Text(
-                String.format("%.2f", distance), fontSize = 56.sp, fontWeight = FontWeight.Bold, color = RunBlack,
+                String.format("%.2f", displayDistanceKm), fontSize = 56.sp, fontWeight = FontWeight.Bold, color = RunBlack,
                 modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Text("KM", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = RunGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -473,7 +554,7 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Box(
                         modifier = Modifier.weight(0.45f).height(56.dp).clip(RoundedCornerShape(28.dp))
-                            .background(RunBgGray).clickable { onFinish(distance, elapsedSeconds) },
+                            .background(RunBgGray).clickable { onFinish(displayDistanceKm, elapsedSeconds) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("■  종료하기", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
