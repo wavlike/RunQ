@@ -64,7 +64,11 @@ fun MyFlow(onLogout: () -> Unit, onFindCourses: () -> Unit = {}, onFindPlaces: (
             onOpenRecord = { id -> step = MyStep.RunDetail(id) },
             onFindCourses = onFindCourses
         )
-        is MyStep.RunDetail -> MyRunDetailScreen(recordId = s.recordId, onBack = { step = MyStep.History })
+        is MyStep.RunDetail -> MyRunDetailScreen(
+            recordId = s.recordId,
+            onBack = { step = MyStep.History },
+            onOpenCourse = { course -> CourseTabRequest.requestDetail(course); onFindCourses() }
+        )
         is MyStep.Saved -> MySavedScreen(onBack = { step = MyStep.Overview }, onFindCourses = onFindCourses, onFindPlaces = onFindPlaces)
         is MyStep.Settings -> MySettingsScreen(
             onBack = { step = MyStep.Overview },
@@ -272,7 +276,7 @@ private fun RunRouteThumbnail(modifier: Modifier = Modifier) {
 
 // ── 42 My / Run Detail ───────────────────────────────
 @Composable
-fun MyRunDetailScreen(recordId: String, onBack: () -> Unit) {
+fun MyRunDetailScreen(recordId: String, onBack: () -> Unit, onOpenCourse: (Course) -> Unit = {}) {
     val record = remember { RunHistoryStore.get(recordId) }
     val course = remember { record?.courseId?.let { id -> RunQData.courses.find { it.id == id } } }
 
@@ -317,15 +321,18 @@ fun MyRunDetailScreen(recordId: String, onBack: () -> Unit) {
         }
         if (course != null) {
             Spacer(Modifier.height(12.dp))
-            Box(
+            Row(
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                    .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(16.dp)).padding(16.dp)
+                    .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(16.dp))
+                    .clickable { onOpenCourse(course) }.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("코스 다시 보기", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
                     Spacer(Modifier.height(6.dp))
                     Text(course.name, fontSize = 11.sp, color = RunGray)
                 }
+                Icon(Icons.Filled.ChevronRight, null, tint = RunGray, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.height(20.dp))
