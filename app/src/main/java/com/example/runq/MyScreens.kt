@@ -376,7 +376,9 @@ fun MySavedScreen(onBack: () -> Unit, onFindCourses: () -> Unit = {}, onFindPlac
                 )
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(savedPlaces) { place -> SavedPlaceCard(place) }
+                    items(savedPlaces) { place ->
+                        SavedPlaceCard(place) { PlaceTabRequest.requestDetail(place); onFindPlaces() }
+                    }
                 }
             }
         }
@@ -425,13 +427,23 @@ private fun SavedCourseCard(course: Course, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SavedPlaceCard(place: FinishHubPlace) {
+private fun SavedPlaceCard(place: FinishHubPlace, onClick: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(18.dp)).padding(14.dp)
+            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(18.dp))
+            .clickable { onClick() }.padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.35f)))
+            val thumbUrl = place.imageUrl
+            if (thumbUrl != null) {
+                coil.compose.AsyncImage(
+                    model = thumbUrl, contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(60.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.2f))
+                )
+            } else {
+                Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(14.dp)).background(place.category.accent.copy(alpha = 0.35f)))
+            }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(place.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)

@@ -1,5 +1,9 @@
 package com.example.runq
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Text
@@ -13,6 +17,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.sp
@@ -145,12 +150,40 @@ fun KakaoRouteMap(
     }
 }
 
-// 카테고리별로 구분되는 시스템 아이콘 — 커스텀 마커 비트맵 없이도 EAT/CAFE/SEE를 시각적으로 구분한다.
-private fun markerDrawableFor(category: PlaceCategory): Int = when (category) {
-    PlaceCategory.EAT -> android.R.drawable.presence_online
-    PlaceCategory.CAFE -> android.R.drawable.presence_away
-    PlaceCategory.SEE -> android.R.drawable.presence_busy
-    PlaceCategory.EVENT -> android.R.drawable.star_big_on
+// 카테고리 첫 글자(E/C/S)를 카테고리 색 원 안에 그려 넣은 마커 비트맵.
+// 예전엔 시스템 아이콘(초록/노랑/빨강 점)이라 EAT/CAFE/SEE 구분이 안 됐던 걸,
+// Figma "30 Places/Home" 시안처럼 실제 글자 배지로 바꿨다.
+private fun categoryLabelBitmap(context: Context, category: PlaceCategory): Bitmap {
+    val letter = when (category) {
+        PlaceCategory.EAT -> "E"
+        PlaceCategory.CAFE -> "C"
+        PlaceCategory.SEE -> "S"
+        PlaceCategory.EVENT -> "★"
+    }
+    val sizePx = (32 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val radius = sizePx / 2f - 2f
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = category.accent.toArgb() }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, fillPaint)
+
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = sizePx * 0.08f
+    }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, borderPaint)
+
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textSize = sizePx * 0.5f
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val textY = sizePx / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(letter, sizePx / 2f, textY, textPaint)
+    return bitmap
 }
 
 /**
@@ -171,6 +204,7 @@ fun KakaoPlacesMap(
         return
     }
 
+    val context = LocalContext.current
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
     val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it })
 
@@ -183,7 +217,7 @@ fun KakaoPlacesMap(
             val layer = labelManager?.layer
             layer?.removeAll()
             val stylesByCategory = PlaceCategory.entries.associateWith { category ->
-                labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(markerDrawableFor(category))))
+                labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(categoryLabelBitmap(context, category))))
             }
             places.forEach { (point, category) ->
                 layer?.addLabel(
