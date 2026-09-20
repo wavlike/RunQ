@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -375,6 +376,8 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var showLocationRationale by remember { mutableStateOf(!hasLocationPermission) }
+    var showGpsError by remember { mutableStateOf(false) }
     val targetKm = remember(course) { course.resolvedDistanceKm()?.takeIf { it > 0 } ?: 5.0 }
     val routePoints = course.routePoints
 
@@ -389,9 +392,15 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         hasLocationPermission = isGranted
     }
-    LaunchedEffect(Unit) {
-        if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+
+    // 이미 달리는 중인데 권한은 있으면서 일정 시간 GPS 신호를 못 잡으면 안내 모달을 띄운다.
+    LaunchedEffect(hasLocationPermission, running) {
+        if (hasLocationPermission && running) {
+            delay(10_000)
+            if (!hasFix) showGpsError = true
+        }
     }
+    LaunchedEffect(hasFix) { if (hasFix) showGpsError = false }
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -450,6 +459,22 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
         if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
     }
 
+    if (showLocationRationale) {
+        PermissionRationaleScreen(
+            mascot = R.drawable.mascot_dragon,
+            headerTitle = "위치 권한 안내",
+            description = "현재 위치를 바탕으로 러닝 코스를 기록하고\n주변의 맛집과 카페를 추천받기 위해\n위치 권한을 허용해 주세요.",
+            actionLabel = "위치 권한 허용하기",
+            onAction = {
+                showLocationRationale = false
+                launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            },
+            onSkip = { showLocationRationale = false },
+            onBack = { showLocationRationale = false }
+        )
+        return
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(RunCream)) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             Spacer(Modifier.height(20.dp))
@@ -474,7 +499,8 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
                         message = "실시간 위치 표시와 거리 측정을 위해 위치 권한을 허용해주세요.",
                         actionLabel = "권한 허용하기",
                         onAction = { launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
-                        modifier = Modifier.padding(20.dp)
+                        modifier = Modifier.padding(20.dp),
+                        mascot = R.drawable.mascot_dragon
                     )
                 }
             }
@@ -568,6 +594,17 @@ fun CourseRunningScreen(course: Course, onFinish: (distanceKm: Double, elapsedSe
                     }
                 }
             }
+        }
+
+        if (showGpsError) {
+            GpsErrorModal(
+                onCancel = { showGpsError = false },
+                onOpenSettings = {
+                    showGpsError = false
+                    try { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                    catch (e: ActivityNotFoundException) { /* 설정 화면이 없는 기기 — 조용히 무시 */ }
+                }
+            )
         }
     }
 }
@@ -928,21 +965,29 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
             Spacer(Modifier.height(14.dp))
             when {
                 isEventTab && festivalLoadFailed -> ErrorStateView(
-                    "행사 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
-                    onRetry = { festivalRetryTick++ }, modifier = Modifier.padding(top = 20.dp)
+                    "네트워크 연결이 불안정해요", "인터넷 연결 상태를 확인하고\n다시 시도해주세요.",
+                    onRetry = { festivalRetryTick++ }, modifier = Modifier.padding(top = 20.dp),
+                    mascot = R.drawable.mascot_bear
                 )
                 isEventTab && festivals == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
                 !isEventTab && loadFailed -> ErrorStateView(
-                    "추천 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
-                    onRetry = { retryTick++ }, modifier = Modifier.padding(top = 20.dp)
+                    "네트워크 연결이 불안정해요", "인터넷 연결 상태를 확인하고\n다시 시도해주세요.",
+                    onRetry = { retryTick++ }, modifier = Modifier.padding(top = 20.dp),
+                    mascot = R.drawable.mascot_bear
                 )
                 !isEventTab && hubResult == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
-                places.isEmpty() -> EmptyStateView(
-                    if (isEventTab) "🎪" else "📍",
-                    if (isEventTab) "예정된 행사가 없어요" else "아직 등록된 장소가 없어요",
-                    if (isEventTab) "곧 새로운 행사가 열리면 알려드릴게요." else "다른 Hub나 카테고리를 확인해보세요.",
-                    Modifier.padding(top = 20.dp)
-                )
+                places.isEmpty() -> if (isEventTab) {
+                    EmptyStateView(
+                        "🎪", "예정된 행사가 없어요", "곧 새로운 행사가 열리면 알려드릴게요.",
+                        Modifier.padding(top = 20.dp), mascot = R.drawable.mascot_dragon
+                    )
+                } else {
+                    EmptyStateView(
+                        "📍", "지금 주변엔 추천할 장소가 없어요", "조금 더 넓은 범위에서\n새로운 장소를 찾아볼까요?",
+                        Modifier.padding(top = 20.dp), mascot = R.drawable.mascot_dragon,
+                        actionLabel = "반경 넓혀보기", onAction = { category = null }
+                    )
+                }
                 else -> LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(places) { place ->
                         PlaceListCard(place) { onPlaceClick(hub, place) }
@@ -1130,13 +1175,20 @@ fun HubPlacesScreen(
             PlaceCategory.EVENT -> emptyList() // 행사는 Hub 범위가 아니라 Place 탭 홈에서만 별도로 보여줌
         }
         when {
-            hub == null -> EmptyStateView("📍", "Finish Hub 정보가 없어요", "이 코스는 아직 Finish Hub가 연결되지 않았어요.", Modifier.padding(top = 30.dp))
+            hub == null -> EmptyStateView(
+                "📍", "Finish Hub 정보가 없어요", "이 코스는 아직 Finish Hub가 연결되지 않았어요.", Modifier.padding(top = 30.dp),
+                mascot = R.drawable.mascot_bear
+            )
             loadFailed -> ErrorStateView(
-                "추천 정보를 불러오지 못했어요", "네트워크 연결을 확인한 뒤 다시 시도해주세요.",
-                onRetry = { retryTick++ }, modifier = Modifier.padding(top = 30.dp)
+                "네트워크 연결이 불안정해요", "인터넷 연결 상태를 확인하고\n다시 시도해주세요.",
+                onRetry = { retryTick++ }, modifier = Modifier.padding(top = 30.dp),
+                mascot = R.drawable.mascot_bear
             )
             list == null -> SkeletonList(count = 3, modifier = Modifier.padding(top = 4.dp))
-            list.isEmpty() -> EmptyStateView("🔍", "추천 장소를 찾지 못했어요", "다른 카테고리를 확인해보세요.", Modifier.padding(top = 30.dp))
+            list.isEmpty() -> EmptyStateView(
+                "🔍", "지금 주변엔 추천할 장소가 없어요", "다른 카테고리를 확인해보세요.", Modifier.padding(top = 30.dp),
+                mascot = R.drawable.mascot_dragon
+            )
             else -> {
                 Text("${list.size} PLACES", fontSize = 11.sp, color = RunGray)
                 Spacer(Modifier.height(12.dp))

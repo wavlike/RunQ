@@ -1,8 +1,11 @@
 package com.example.runq
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -254,8 +257,12 @@ fun RunningScreen() {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         )
     }
+    // 처음 권한이 없는 상태로 들어왔을 때만 "왜 필요한지" 설명 화면을 먼저 보여준다.
+    // 이미 권한이 있으면(재진입 등) 바로 지도로 들어간다.
+    var showLocationRationale by remember { mutableStateOf(!hasLocationPermission) }
+    var showGpsError by remember { mutableStateOf(false) }
     var hasFix by remember { mutableStateOf(false) }
-    
+
     // 현재 코스 정보 (Saved탭에서 "다음 러닝으로 설정"한 코스가 있으면 로드)
     val currentCourse = remember {
         SavedItemsStore.nextCourseId?.let { id -> RunQData.courses.find { it.id == id } }
@@ -275,13 +282,18 @@ fun RunningScreen() {
         hasLocationPermission = isGranted
     }
 
-    LaunchedEffect(Unit) {
-        if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    // 러닝을 시작했는데 권한은 있으면서 일정 시간 GPS 신호를 못 잡으면 안내 모달을 띄운다.
+    LaunchedEffect(hasLocationPermission, isRunning) {
+        if (hasLocationPermission && isRunning) {
+            kotlinx.coroutines.delay(10_000)
+            if (!hasFix) showGpsError = true
+        }
     }
+    LaunchedEffect(hasFix) { if (hasFix) showGpsError = false }
 
     // FusedLocationProviderClient 연동
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
-    
+
     DisposableEffect(hasLocationPermission, isRunning) {
         if (!hasLocationPermission || !isRunning) return@DisposableEffect onDispose {}
 
@@ -336,6 +348,22 @@ fun RunningScreen() {
         String.format(java.util.Locale.US, "%02d:%02d", m, s)
     }
 
+    if (showLocationRationale) {
+        PermissionRationaleScreen(
+            mascot = R.drawable.mascot_dragon,
+            headerTitle = "위치 권한 안내",
+            description = "현재 위치를 바탕으로 러닝 코스를 기록하고\n주변의 맛집과 카페를 추천받기 위해\n위치 권한을 허용해 주세요.",
+            actionLabel = "위치 권한 허용하기",
+            onAction = {
+                showLocationRationale = false
+                launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            },
+            onSkip = { showLocationRationale = false },
+            onBack = { showLocationRationale = false }
+        )
+        return
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(RunWhite)) {
         if (hasLocationPermission) {
             KakaoRouteMap(
@@ -352,7 +380,8 @@ fun RunningScreen() {
                     message = "지도 표시와 러닝 거리 측정을 위해 위치 권한을 허용해주세요.",
                     actionLabel = "권한 허용하기",
                     onAction = { launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
-                    modifier = Modifier.padding(24.dp)
+                    modifier = Modifier.padding(24.dp),
+                    mascot = R.drawable.mascot_dragon
                 )
             }
         }
@@ -449,6 +478,17 @@ fun RunningScreen() {
             }
             Spacer(Modifier.height(20.dp))
         }
+
+        if (showGpsError) {
+            GpsErrorModal(
+                onCancel = { showGpsError = false },
+                onOpenSettings = {
+                    showGpsError = false
+                    try { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                    catch (e: ActivityNotFoundException) { /* 설정 화면이 없는 기기 — 조용히 무시 */ }
+                }
+            )
+        }
     }
 }
 
@@ -539,7 +579,10 @@ fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit, onP
 
         if (tab == 0) {
             if (matchedCourses.isEmpty()) {
-                EmptyStateView("🔍", "일치하는 코스가 없어요", "다른 검색어로 시도해보세요.", Modifier.padding(top = 30.dp))
+                EmptyStateView(
+                    "🔍", "검색 결과가 없어요", "다른 지역명이나 코스 이름으로\n다시 검색해보세요.", Modifier.padding(top = 30.dp),
+                    mascot = R.drawable.mascot_dragon, actionLabel = "검색 다시하기", onAction = { query = "" }
+                )
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(matchedCourses) { course -> CourseListRow(course) { onCourseClick(course) } }
@@ -547,7 +590,10 @@ fun SearchResultsScreen(onBack: () -> Unit, onCourseClick: (Course) -> Unit, onP
             }
         } else {
             if (matchedPlaces.isEmpty()) {
-                EmptyStateView("🔍", "일치하는 장소가 없어요", "다른 검색어로 시도해보세요.", Modifier.padding(top = 30.dp))
+                EmptyStateView(
+                    "🔍", "검색 결과가 없어요", "다른 지역명이나 코스 이름으로\n다시 검색해보세요.", Modifier.padding(top = 30.dp),
+                    mascot = R.drawable.mascot_dragon, actionLabel = "검색 다시하기", onAction = { query = "" }
+                )
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(matchedPlaces) { place ->
@@ -620,7 +666,10 @@ fun NotificationsScreen(onBack: () -> Unit) {
         Text("RunQ의 새로운 소식을 확인해보세요.", fontSize = 13.sp, color = RunGray)
         Spacer(Modifier.height(20.dp))
         if (notices.isEmpty()) {
-            EmptyStateView("🔔", "아직 알림이 없어요", "코스를 저장하거나 러닝을 완주하면 알림이 생겨요.", Modifier.padding(top = 40.dp))
+            EmptyStateView(
+                "🔔", "아직 알림이 없어요", "코스를 저장하거나 러닝을 완주하면 알림이 생겨요.", Modifier.padding(top = 40.dp),
+                mascot = R.drawable.mascot_bear
+            )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(notices) { notice ->

@@ -41,7 +41,7 @@ sealed class MyStep {
 }
 
 @Composable
-fun MyFlow(onLogout: () -> Unit) {
+fun MyFlow(onLogout: () -> Unit, onFindCourses: () -> Unit = {}, onFindPlaces: () -> Unit = {}) {
     var step by remember { mutableStateOf<MyStep>(MyStep.Overview) }
     when (val s = step) {
         is MyStep.Overview -> MyOverviewScreen(
@@ -52,10 +52,11 @@ fun MyFlow(onLogout: () -> Unit) {
         )
         is MyStep.History -> MyHistoryScreen(
             onBack = { step = MyStep.Overview },
-            onOpenRecord = { id -> step = MyStep.RunDetail(id) }
+            onOpenRecord = { id -> step = MyStep.RunDetail(id) },
+            onFindCourses = onFindCourses
         )
         is MyStep.RunDetail -> MyRunDetailScreen(recordId = s.recordId, onBack = { step = MyStep.History })
-        is MyStep.Saved -> MySavedScreen(onBack = { step = MyStep.Overview })
+        is MyStep.Saved -> MySavedScreen(onBack = { step = MyStep.Overview }, onFindCourses = onFindCourses, onFindPlaces = onFindPlaces)
         is MyStep.Settings -> MySettingsScreen(
             onBack = { step = MyStep.Overview },
             onDeleteAccount = { step = MyStep.DeleteAccount },
@@ -176,7 +177,7 @@ private fun MyMenuDivider() {
 
 // ── 41 My / History ──────────────────────────────────
 @Composable
-fun MyHistoryScreen(onBack: () -> Unit, onOpenRecord: (String) -> Unit) {
+fun MyHistoryScreen(onBack: () -> Unit, onOpenRecord: (String) -> Unit, onFindCourses: () -> Unit = {}) {
     val records = remember { RunHistoryStore.all() }
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream).padding(20.dp)) {
@@ -188,9 +189,12 @@ fun MyHistoryScreen(onBack: () -> Unit, onOpenRecord: (String) -> Unit) {
         if (records.isEmpty()) {
             EmptyStateView(
                 icon = "🏃",
-                title = "아직 러닝 기록이 없어요",
-                message = "코스를 골라 첫 러닝을 완주하면 여기에 기록이 쌓여요.",
-                modifier = Modifier.padding(top = 40.dp)
+                title = "아직 달린 기록이 없어요",
+                message = "첫 러닝을 시작하고 나만의 기록을 남겨보세요!",
+                modifier = Modifier.padding(top = 40.dp),
+                mascot = R.drawable.mascot_bear,
+                actionLabel = "러닝 코스 탐색하기",
+                onAction = onFindCourses
             )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -304,7 +308,7 @@ fun MyRunDetailScreen(recordId: String, onBack: () -> Unit) {
 
 // ── 43 My / Saved ────────────────────────────────────
 @Composable
-fun MySavedScreen(onBack: () -> Unit) {
+fun MySavedScreen(onBack: () -> Unit, onFindCourses: () -> Unit = {}, onFindPlaces: () -> Unit = {}) {
     var tab by remember { mutableStateOf(0) } // 0 = 코스, 1 = 장소
     val savedCourses = remember { SavedItemsStore.savedCourses() }
     val savedPlaces = remember { SavedItemsStore.savedPlaces() }
@@ -325,7 +329,10 @@ fun MySavedScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(18.dp))
         if (tab == 0) {
             if (savedCourses.isEmpty()) {
-                EmptyStateView("📌", "저장한 코스가 없어요", "코스 상세에서 \"코스 저장하기\"를 눌러보세요.", Modifier.padding(top = 30.dp))
+                EmptyStateView(
+                    "📌", "아직 저장한 코스가 없어요", "마음에 드는 코스를 저장해두면\n여기서 다시 볼 수 있어요.", Modifier.padding(top = 30.dp),
+                    mascot = R.drawable.mascot_bear, actionLabel = "코스 둘러보기", onAction = onFindCourses
+                )
             } else {
                 Text("다음 러닝 후보를 모아두었어요.", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = RunBlack)
                 Spacer(Modifier.height(12.dp))
@@ -335,7 +342,10 @@ fun MySavedScreen(onBack: () -> Unit) {
             }
         } else {
             if (savedPlaces.isEmpty()) {
-                EmptyStateView("📍", "저장한 장소가 없어요", "Place 탭에서 하트를 눌러 장소를 저장해보세요.", Modifier.padding(top = 30.dp))
+                EmptyStateView(
+                    "📍", "저장한 장소가 없어요", "Place 탭에서 하트를 눌러 장소를 저장해보세요.", Modifier.padding(top = 30.dp),
+                    mascot = R.drawable.mascot_bear, actionLabel = "Place 둘러보기", onAction = onFindPlaces
+                )
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(savedPlaces) { place -> SavedPlaceCard(place) }

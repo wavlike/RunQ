@@ -162,7 +162,11 @@ fun MainWithTabs(onLogout: () -> Unit) {
                 )
                 Tab.RUN -> RunningScreen()
                 Tab.PLACE -> PlaceFlow()
-                Tab.MY -> MyFlow(onLogout = onLogout)
+                Tab.MY -> MyFlow(
+                    onLogout = onLogout,
+                    onFindCourses = { tab = Tab.COURSE },
+                    onFindPlaces = { tab = Tab.PLACE }
+                )
             }
         }
         BottomNavBar(selected = highlightedTab, onSelect = { tab = it })
@@ -320,7 +324,11 @@ fun BrowseScreen(onCourseClick: (Course) -> Unit) {
         Spacer(Modifier.height(12.dp))
 
         if (displayedCourses.isEmpty()) {
-            EmptyStateView("🔍", "조건에 맞는 코스가 없어요", "필터를 바꿔서 다시 찾아보세요.", Modifier.padding(top = 24.dp))
+            EmptyStateView(
+                "🔍", "조건에 맞는 코스가 없어요", "필터를 바꿔서 다시 찾아보세요.", Modifier.padding(top = 24.dp),
+                mascot = R.drawable.mascot_dragon, actionLabel = "필터 초기화",
+                onAction = { regionFilter = "전체 지역"; distanceFilter = "전체"; difficultyFilter = "전체" }
+            )
         } else {
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(displayedCourses) { course ->
