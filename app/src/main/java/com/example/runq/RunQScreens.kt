@@ -63,7 +63,7 @@ fun HomeFlow(onFindCourses: () -> Unit, onOpenPlace: (FinishHubPlace) -> Unit = 
         )
         HomeStep.Search -> SearchResultsScreen(
             onBack = { step = HomeStep.Main },
-            onCourseClick = { onFindCourses() },
+            onCourseClick = { course -> CourseTabRequest.requestDetail(course); onFindCourses() },
             onPlaceClick = onOpenPlace
         )
         HomeStep.Notifications -> NotificationsScreen(onBack = { step = HomeStep.Main })
@@ -185,7 +185,7 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
                 }
                 Spacer(Modifier.height(14.dp))
                 if (featured != null) {
-                    TodaysRunCard(course = featured, onClick = onFindCourses)
+                    TodaysRunCard(course = featured, onClick = { CourseTabRequest.requestDetail(featured); onFindCourses() })
                 } else {
                     Text("아직 등록된 코스가 없어요.", fontSize = 13.sp, color = RunGray)
                 }

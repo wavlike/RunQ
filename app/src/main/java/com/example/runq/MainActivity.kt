@@ -239,7 +239,12 @@ private fun CourseStep.sectionTab(): Tab = when (this) {
 
 @Composable
 fun CourseFlow(onSectionHint: (Tab) -> Unit = {}, onOpenFinishHub: (Course, PlaceCategory) -> Unit = { _, _ -> }) {
-    var step by remember { mutableStateOf<CourseStep>(CourseStep.Browse) }
+    var step by remember {
+        mutableStateOf<CourseStep>(
+            CourseTabRequest.consumeDetail()?.let { course -> CourseStep.Detail(course, CourseStep.Browse) }
+                ?: CourseStep.Browse
+        )
+    }
     LaunchedEffect(step) { onSectionHint(step.sectionTab()) }
 
     when (val s = step) {
@@ -282,6 +287,16 @@ object CourseTabRequest {
     fun consume(): String? {
         val result = pendingDistanceFilter
         pendingDistanceFilter = null
+        return result
+    }
+
+    // 검색 결과·홈 추천 카드·저장한 코스처럼 다른 탭에서 특정 코스를 콕 집어
+    // 상세화면으로 바로 이동시킬 때 쓴다 (PlaceTabRequest.requestDetail과 동일한 패턴).
+    private var pendingDetailCourse: Course? = null
+    fun requestDetail(course: Course) { pendingDetailCourse = course }
+    fun consumeDetail(): Course? {
+        val result = pendingDetailCourse
+        pendingDetailCourse = null
         return result
     }
 }

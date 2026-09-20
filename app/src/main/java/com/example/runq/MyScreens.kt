@@ -363,7 +363,9 @@ fun MySavedScreen(onBack: () -> Unit, onFindCourses: () -> Unit = {}, onFindPlac
                 Text("다음 러닝 후보를 모아두었어요.", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = RunBlack)
                 Spacer(Modifier.height(12.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(savedCourses) { course -> SavedCourseCard(course) }
+                    items(savedCourses) { course ->
+                        SavedCourseCard(course) { CourseTabRequest.requestDetail(course); onFindCourses() }
+                    }
                 }
             }
         } else {
@@ -393,10 +395,11 @@ private fun SavedTabChip(label: String, selected: Boolean, modifier: Modifier = 
 }
 
 @Composable
-private fun SavedCourseCard(course: Course) {
+private fun SavedCourseCard(course: Course, onClick: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(20.dp)).padding(14.dp)
+            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(20.dp))
+            .clickable { onClick() }.padding(14.dp)
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
