@@ -163,6 +163,19 @@ private fun mergeCurated(curated: List<FinishHubPlace>, apiResults: List<FinishH
     return curated + rest
 }
 
+// 큐레이션 장소는 tourapi_content_id가 비어있는 경우가 많아 상세화면에서 운영시간/사진/설명을
+// 못 채웠다 — 이름으로 TourAPI를 검색해서, 제목이 서로 포함 관계인(=확실히 같은 장소로 보이는)
+// 결과만 채택한다. 애매하면 null을 반환해서 엉뚱한 장소 정보가 붙지 않게 한다.
+private suspend fun findTourApiMatch(title: String): TourPlace? {
+    val results = runCatching {
+        TourApiClient.api.searchKeyword(keyword = "강릉 $title").response.body.items?.item ?: emptyList()
+    }.getOrDefault(emptyList())
+    return results.firstOrNull { api ->
+        val apiTitle = api.title
+        apiTitle != null && api.contentId != null && (apiTitle.contains(title) || title.contains(apiTitle))
+    }
+}
+
 // TourAPI 결과를 FinishHubPlace로 옮길 때 mapX/mapY(좌표)까지 같이 넘긴다.
 // (예전엔 안 넘겨서 API로 가져온 장소가 지도에 안 찍히는 버그가 있었음)
 private fun TourPlace.toFinishHubPlace(category: PlaceCategory): FinishHubPlace = FinishHubPlace(
@@ -1297,38 +1310,53 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
     val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     var detail by remember { mutableStateOf<DetailCommonItem?>(null) }
     var intro by remember { mutableStateOf<DetailIntroItem?>(null) }
-    var loading by remember { mutableStateOf(place.contentId != null) }
+    var loading by remember { mutableStateOf(true) }
     var kakaoInfo by remember { mutableStateOf<KakaoPlaceLookup?>(null) }
     // 장소 목록(PlaceListCard)엔 이미 있던 저장 하트가 상세화면엔 없어서 여기서 저장할
     // 방법이 아예 없었다 — 목록과 동일한 SavedItemsStore로 상세화면에도 추가.
     val placeId = place.id
     var isSaved by remember(placeId) { mutableStateOf(placeId?.let { SavedItemsStore.isPlaceSaved(it) } ?: false) }
 
-    LaunchedEffect(place.contentId) {
-        val id = place.contentId
-        if (id != null) {
-            detail = runCatching {
-                TourApiClient.api.getDetailCommon(contentId = id).response.body.items?.item?.firstOrNull()
-            }.onFailure {
-                // "상세정보를 불러오지 못했어요"로만 뭉뚱그려지지 않도록 실제 원인을 logcat에 남긴다.
-                android.util.Log.w("PlaceDetail", "detailCommon2 실패 (contentId=$id, title=${place.title})", it)
-            }.getOrNull()
-            loading = false
+    LaunchedEffect(place.contentId, place.title) {
+        loading = true
+        detail = null
+        intro = null
 
-            // 운영시간/휴무일은 detailIntro2에만 있다. contentTypeId는 실제로 있으면 그 값을,
-            // 없으면 카테고리로 대략 추정(EAT/CAFE→39 음식점, SEE→12 관광지)해서 요청하고,
-            // 최종적으로는 응답이 스스로 알려주는 contenttypeid 기준으로 필드를 골라 읽는다.
-            val typeId = place.contentTypeId ?: when (place.category) {
+        // contentId가 이미 있으면(주로 API로 받아온 장소) 그대로 쓰고, 큐레이션 장소처럼
+        // 없으면 이름으로 TourAPI를 검색해 확실히 같은 장소일 때만 contentId를 알아낸다.
+        val resolvedId: String?
+        val resolvedTypeId: String
+        val directId = place.contentId
+        if (directId != null) {
+            resolvedId = directId
+            resolvedTypeId = place.contentTypeId ?: when (place.category) {
                 PlaceCategory.EAT, PlaceCategory.CAFE -> "39"
                 PlaceCategory.SEE -> "12"
                 PlaceCategory.EVENT -> "15"
             }
-            intro = runCatching {
-                TourApiClient.api.getDetailIntro(contentId = id, contentTypeId = typeId).response.body.items?.item?.firstOrNull()
+        } else {
+            val match = runCatching { findTourApiMatch(place.title) }.getOrNull()
+            resolvedId = match?.contentId
+            resolvedTypeId = match?.contentTypeId ?: "12"
+        }
+
+        if (resolvedId != null) {
+            detail = runCatching {
+                TourApiClient.api.getDetailCommon(contentId = resolvedId).response.body.items?.item?.firstOrNull()
             }.onFailure {
-                android.util.Log.w("PlaceDetail", "detailIntro2 실패 (contentId=$id, title=${place.title})", it)
+                // "상세정보를 불러오지 못했어요"로만 뭉뚱그려지지 않도록 실제 원인을 logcat에 남긴다.
+                android.util.Log.w("PlaceDetail", "detailCommon2 실패 (contentId=$resolvedId, title=${place.title})", it)
+            }.getOrNull()
+
+            // 운영시간/휴무일은 detailIntro2에만 있다. 최종적으로는 응답이 스스로 알려주는
+            // contenttypeid 기준으로 필드를 골라 읽으므로 여기 typeId는 요청용 힌트일 뿐이다.
+            intro = runCatching {
+                TourApiClient.api.getDetailIntro(contentId = resolvedId, contentTypeId = resolvedTypeId).response.body.items?.item?.firstOrNull()
+            }.onFailure {
+                android.util.Log.w("PlaceDetail", "detailIntro2 실패 (contentId=$resolvedId, title=${place.title})", it)
             }.getOrNull()
         }
+        loading = false
     }
 
     // 전화/영업시간 등 큐레이션 DB에 없는 정보를 보완하고, 카테고리 태그도 여기서 얻는다
@@ -1361,7 +1389,9 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
             }
         }
         Spacer(Modifier.height(16.dp))
-        PlacePhotoPlaceholder(place.category.accent, 200, detail?.firstImage?.takeIf { it.isNotBlank() } ?: place.imageUrl)
+        // 큐레이션 사진(직접 확인된 것)을 API에서 이름으로 자동 매칭한 사진보다 우선한다 —
+        // 잘못 매칭됐을 때 엉뚱한 장소 사진이 뜨는 걸 막기 위해서다.
+        PlacePhotoPlaceholder(place.category.accent, 200, place.imageUrl ?: detail?.firstImage?.takeIf { it.isNotBlank() })
         Spacer(Modifier.height(20.dp))
         Text(place.title, fontSize = 22.sp, fontWeight = FontWeight.Black, color = RunBlack)
         Spacer(Modifier.height(4.dp))
@@ -1391,17 +1421,18 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
                     Text(place.recommendReason, fontSize = 13.sp, color = RunPurple, fontWeight = FontWeight.Medium, lineHeight = 18.sp)
                 }
             }
-            place.contentId == null -> Text(
-                "RunQ가 직접 고른 장소예요. 상세정보는 TourAPI 연동(P1) 이후 채워질 예정이에요.",
+            loading -> CircularProgressIndicator(color = RunPurple)
+            !detail?.overview.isNullOrBlank() -> Text(detail!!.overview!!, fontSize = 14.sp, color = RunBlack, lineHeight = 20.sp)
+            else -> Text(
+                "RunQ가 직접 고른 장소예요. 상세 설명은 아직 준비 중이에요.",
                 fontSize = 14.sp, color = RunGray
             )
-            loading -> CircularProgressIndicator(color = RunPurple)
-            detail == null -> Text("상세정보를 불러오지 못했어요.", color = RunGray)
-            else -> Text(detail!!.overview ?: "설명이 없어요.", fontSize = 14.sp, color = RunBlack, lineHeight = 20.sp)
         }
         Spacer(Modifier.height(20.dp))
 
-        PlaceInfoRow("주소", (detail?.addr1 ?: place.addr).ifBlank { kakaoInfo?.address ?: "주소 정보 준비중" })
+        // 주소도 사진과 같은 이유로 큐레이션 값(place.addr)을 우선하고, 없을 때만
+        // TourAPI/Kakao 값으로 보완한다.
+        PlaceInfoRow("주소", place.addr.ifBlank { detail?.addr1?.takeIf { it.isNotBlank() } ?: kakaoInfo?.address ?: "주소 정보 준비중" })
         Spacer(Modifier.height(10.dp))
         PlaceInfoRow("전화", detail?.tel?.takeIf { it.isNotBlank() } ?: kakaoInfo?.phone ?: "정보 없음")
         intro?.hoursLabel()?.let { hours ->

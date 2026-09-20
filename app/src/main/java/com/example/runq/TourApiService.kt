@@ -40,6 +40,18 @@ interface TourApi {
         @Query("overviewYN") overviewYN: String = "Y"
     ): DetailCommonResponse
 
+    // 이름으로 TourAPI 콘텐츠 검색 — RunQ 큐레이션 장소 대부분은 tourapi_content_id가
+    // 비어있어서, 상세화면 진입 시 이걸로 콘텐츠를 찾아 운영시간/사진/설명을 보완한다.
+    @GET("searchKeyword2")
+    suspend fun searchKeyword(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("keyword") keyword: String,
+        @Query("numOfRows") numOfRows: Int = 5
+    ): TourResponse
+
     // 장소 소개 상세 (운영시간/휴무일 등 — 콘텐츠타입별로 필드명이 다름, detailIntro2가 원본)
     @GET("detailIntro2")
     suspend fun getDetailIntro(
