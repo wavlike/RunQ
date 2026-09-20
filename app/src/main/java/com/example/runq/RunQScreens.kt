@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -243,6 +244,16 @@ private fun WeatherStat(label: String, value: String) {
     }
 }
 
+// sky는 실제 API 값이 있을 때만 채워진다(SafetyApiService.fetchSafety) — 모르면
+// "맑음" 아이콘으로 단정 짓지 않고 중립적인 온도계 아이콘을 쓴다.
+private fun skyIcon(sky: String?): ImageVector = when (sky) {
+    "맑음" -> Icons.Default.WbSunny
+    "구름많음", "흐림" -> Icons.Default.Cloud
+    "비", "비/눈", "소나기" -> Icons.Default.Umbrella
+    "눈" -> Icons.Default.AcUnit
+    else -> Icons.Default.Thermostat
+}
+
 // ════════════════════════════════════════════════════════
 // 러닝 화면: 지도 및 GPS 실시간 연동
 // ════════════════════════════════════════════════════════
@@ -268,6 +279,12 @@ fun RunningScreen() {
         SavedItemsStore.nextCourseId?.let { id -> RunQData.courses.find { it.id == id } }
     }
     val routePoints = currentCourse?.routePoints ?: emptyList()
+
+    // 상단 날씨 표시 — 예전엔 "32°C"/해 아이콘이 그냥 고정값이었다. 실제 API로 채운다.
+    var safety by remember { mutableStateOf<SafetyInfo?>(null) }
+    LaunchedEffect(currentCourse?.id) {
+        safety = runCatching { fetchSafety(currentCourse?.weatherGrid()) }.getOrNull()
+    }
 
     // 진행 거리 (코스 위에서의 누적 거리) / 남은 거리
     var progressKm by remember { mutableStateOf(0.0) }
@@ -392,9 +409,9 @@ fun RunningScreen() {
         Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.WbSunny, null, tint = RunBlack, modifier = Modifier.size(20.dp))
+                    Icon(skyIcon(safety?.sky), null, tint = RunBlack, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("32°C", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(safety?.temp?.takeIf { it != "-" } ?: "확인중", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.GpsFixed, null, tint = if(hasFix) RunPurple else RunGray, modifier = Modifier.size(20.dp))
