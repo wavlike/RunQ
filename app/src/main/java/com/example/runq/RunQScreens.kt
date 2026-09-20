@@ -292,6 +292,8 @@ fun RunningScreen() {
     var showLocationRationale by remember { mutableStateOf(!hasLocationPermission) }
     var showGpsError by remember { mutableStateOf(false) }
     var hasFix by remember { mutableStateOf(false) }
+    // 정지 버튼을 눌러 저장한 직후의 기록 — null이 아니면 완주 요약 모달을 보여준다.
+    var finishedRecord by remember { mutableStateOf<RunRecord?>(null) }
 
     // 현재 코스 정보 (Saved탭에서 "다음 러닝으로 설정"한 코스가 있으면 로드)
     val currentCourse = remember {
@@ -466,7 +468,21 @@ fun RunningScreen() {
             ) {
                 Surface(
                     modifier = Modifier.size(64.dp).clickable {
-                        if (!hasLocationPermission) launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        if (!hasLocationPermission) {
+                            launcher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        } else {
+                            // 지도를 내 위치로 재중심 — currentLocation을 갱신하면 KakaoRouteMap이
+                            // 알아서 카메라를 그 위치로 옮긴다(달리는 중이 아니어도 동작하도록
+                            // requestLocationUpdates 대신 캐시된 마지막 위치를 즉시 사용).
+                            try {
+                                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                                    if (location != null) {
+                                        currentLocation = RoutePoint(location.latitude, location.longitude)
+                                        hasFix = true
+                                    }
+                                }
+                            } catch (e: SecurityException) { /* 권한이 방금 취소된 경우 — 조용히 무시 */ }
+                        }
                     },
                     shape = RoundedCornerShape(32.dp),
                     color = RunWhite,
@@ -489,19 +505,20 @@ fun RunningScreen() {
                 Surface(
                     modifier = Modifier.size(64.dp).clickable {
                         val finalDist = if (routePoints.isNotEmpty()) progressKm else totalDistanceKm
+                        isRunning = false
                         if (finalDist > 0.01) {
-                            RunHistoryStore.add(
-                                RunRecord(
-                                    id = java.util.UUID.randomUUID().toString(),
-                                    courseId = currentCourse?.id,
-                                    courseName = currentCourse?.name ?: "자유 러닝",
-                                    timestampMillis = System.currentTimeMillis(),
-                                    distanceKm = finalDist,
-                                    elapsedSeconds = elapsedSeconds
-                                )
+                            val record = RunRecord(
+                                id = java.util.UUID.randomUUID().toString(),
+                                courseId = currentCourse?.id,
+                                courseName = currentCourse?.name ?: "자유 러닝",
+                                timestampMillis = System.currentTimeMillis(),
+                                distanceKm = finalDist,
+                                elapsedSeconds = elapsedSeconds
                             )
+                            RunHistoryStore.add(record)
+                            finishedRecord = record
                         }
-                        totalDistanceKm = 0.0; progressKm = 0.0; elapsedSeconds = 0; isRunning = false
+                        totalDistanceKm = 0.0; progressKm = 0.0; elapsedSeconds = 0
                     },
                     shape = RoundedCornerShape(32.dp),
                     color = RunWhite,
@@ -525,6 +542,42 @@ fun RunningScreen() {
                 }
             )
         }
+
+        finishedRecord?.let { record ->
+            FreeRunSummaryModal(record = record, onDismiss = { finishedRecord = null })
+        }
+    }
+}
+
+// 코스 없이 정지 버튼을 눌러 자유 러닝을 마쳤을 때 보여주는 완주 요약 —
+// CompleteScreen은 Course/Finish Hub가 있어야 해서(자유 러닝엔 둘 다 없음) 별도로 둔다.
+@Composable
+private fun FreeRunSummaryModal(record: RunRecord, onDismiss: () -> Unit) {
+    val caloriesEstimate = remember(record.distanceKm) { (record.distanceKm * 65).toInt() }
+    Box(modifier = Modifier.fillMaxSize().background(RunBlack.copy(alpha = 0.45f)).clickable(enabled = false) {})
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(24.dp)
+            .clip(RoundedCornerShape(24.dp)).background(RunWhite).padding(24.dp)
+    ) {
+        Text("RUN COMPLETE", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = RunGray)
+        Spacer(Modifier.height(6.dp))
+        Text("자유 러닝 완료!", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+        Spacer(Modifier.height(20.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            CourseInfoLine("거리", String.format(java.util.Locale.US, "%.2f KM", record.distanceKm), Modifier.weight(1f))
+            CourseInfoLine("운동 시간", record.durationLabel(), Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            CourseInfoLine("평균 페이스", "${record.paceLabel()} /KM", Modifier.weight(1f))
+            CourseInfoLine("소모 칼로리", "$caloriesEstimate KCAL", Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(20.dp))
+        Box(
+            modifier = Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(25.dp))
+                .background(RunLime).clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) { Text("확인", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RunBlack) }
     }
 }
 
