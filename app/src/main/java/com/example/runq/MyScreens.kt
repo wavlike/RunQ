@@ -49,9 +49,31 @@ sealed class MyStep {
     object DeleteAccount : MyStep()
 }
 
+// 알림 탭에서 "주간 러닝 리포트"/"저장한 목록" 같은 항목을 눌렀을 때, My 탭으로 전환하면서
+// 바로 해당 하위 화면으로 진입시키기 위한 요청 — CourseTabRequest/PlaceTabRequest와 같은 패턴
+// (탭을 벗어나면 MyFlow의 remember 상태가 초기화되므로 싱글턴으로 요청을 넘겨받는다).
+object MyTabRequest {
+    enum class Target { HISTORY, SAVED }
+    private var pending: Target? = null
+    fun request(target: Target) { pending = target }
+    fun consume(): Target? {
+        val result = pending
+        pending = null
+        return result
+    }
+}
+
 @Composable
 fun MyFlow(onLogout: () -> Unit, onFindCourses: () -> Unit = {}, onFindPlaces: () -> Unit = {}) {
-    var step by remember { mutableStateOf<MyStep>(MyStep.Overview) }
+    var step by remember {
+        mutableStateOf<MyStep>(
+            when (MyTabRequest.consume()) {
+                MyTabRequest.Target.HISTORY -> MyStep.History
+                MyTabRequest.Target.SAVED -> MyStep.Saved
+                null -> MyStep.Overview
+            }
+        )
+    }
     when (val s = step) {
         is MyStep.Overview -> MyOverviewScreen(
             onOpenHistory = { step = MyStep.History },

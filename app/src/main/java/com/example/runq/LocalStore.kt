@@ -65,6 +65,42 @@ object RunHistoryStore {
             cal.get(Calendar.YEAR) == year && cal.get(Calendar.MONTH) == month
         }
     }
+
+    // 주간 러닝 리포트 알림용 — weeksAgo=0이면 이번 주, 1이면 지난 주 기록만 골라낸다.
+    fun recordsInWeek(weeksAgo: Int): List<RunRecord> {
+        val target = Calendar.getInstance().apply { add(Calendar.WEEK_OF_YEAR, -weeksAgo) }
+        val targetYear = target.get(Calendar.YEAR)
+        val targetWeek = target.get(Calendar.WEEK_OF_YEAR)
+        val cal = Calendar.getInstance()
+        return all().filter {
+            cal.timeInMillis = it.timestampMillis
+            cal.get(Calendar.YEAR) == targetYear && cal.get(Calendar.WEEK_OF_YEAR) == targetWeek
+        }
+    }
+}
+
+fun List<RunRecord>.totalDistanceKm(): Double = sumOf { it.distanceKm }
+
+// 여러 기록을 합친 평균 페이스 — 기록별 페이스를 평균내는 게 아니라, 총 시간/총 거리로 계산해야
+// 정확하다(짧게 빨리 뛴 기록 하나가 평균을 왜곡하지 않도록).
+fun List<RunRecord>.avgPaceLabel(): String? {
+    val totalKm = totalDistanceKm()
+    if (totalKm < 0.01) return null
+    val totalSec = sumOf { it.elapsedSeconds }
+    val paceSec = (totalSec / totalKm).toInt()
+    return "${paceSec / 60}'${(paceSec % 60).toString().padStart(2, '0')}\""
+}
+
+// 알림 화면의 "안읽음" 표시 — 알림 id별로 읽음 여부만 로컬에 저장한다.
+object NotificationReadStore {
+    private const val KEY = "read_notice_ids"
+    fun isRead(id: String): Boolean = readIds().contains(id)
+    fun markRead(id: String) {
+        val current = readIds()
+        if (id in current) return
+        prefs.edit().putStringSet(KEY, current + id).apply()
+    }
+    private fun readIds(): Set<String> = prefs.getStringSet(KEY, emptySet()) ?: emptySet()
 }
 
 object SavedItemsStore {

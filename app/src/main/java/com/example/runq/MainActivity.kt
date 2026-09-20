@@ -151,6 +151,22 @@ fun MainWithTabs(onLogout: () -> Unit) {
                     onOpenPlace = { place ->
                         PlaceTabRequest.requestDetail(place)
                         tab = Tab.PLACE
+                    },
+                    onOpenNoticeCourse = { course ->
+                        CourseTabRequest.requestDetail(course)
+                        tab = Tab.COURSE
+                    },
+                    onOpenNoticePlaceCategory = { hubId, category ->
+                        PlaceTabRequest.request(hubId, category)
+                        tab = Tab.PLACE
+                    },
+                    onOpenNoticeHistory = {
+                        MyTabRequest.request(MyTabRequest.Target.HISTORY)
+                        tab = Tab.MY
+                    },
+                    onOpenNoticeSaved = {
+                        MyTabRequest.request(MyTabRequest.Target.SAVED)
+                        tab = Tab.MY
                     }
                 )
                 Tab.COURSE -> CourseFlow(

@@ -54,7 +54,14 @@ sealed class HomeStep {
 }
 
 @Composable
-fun HomeFlow(onFindCourses: () -> Unit, onOpenPlace: (FinishHubPlace) -> Unit = {}) {
+fun HomeFlow(
+    onFindCourses: () -> Unit,
+    onOpenPlace: (FinishHubPlace) -> Unit = {},
+    onOpenNoticeCourse: (Course) -> Unit = { onFindCourses() },
+    onOpenNoticePlaceCategory: (String?, PlaceCategory) -> Unit = { _, _ -> },
+    onOpenNoticeHistory: () -> Unit = {},
+    onOpenNoticeSaved: () -> Unit = {}
+) {
     var step by remember { mutableStateOf<HomeStep>(HomeStep.Main) }
     when (step) {
         HomeStep.Main -> HomeScreen(
@@ -67,7 +74,13 @@ fun HomeFlow(onFindCourses: () -> Unit, onOpenPlace: (FinishHubPlace) -> Unit = 
             onCourseClick = { course -> CourseTabRequest.requestDetail(course); onFindCourses() },
             onPlaceClick = onOpenPlace
         )
-        HomeStep.Notifications -> NotificationsScreen(onBack = { step = HomeStep.Main })
+        HomeStep.Notifications -> NotificationsScreen(
+            onBack = { step = HomeStep.Main },
+            onOpenCourse = onOpenNoticeCourse,
+            onOpenPlaceCategory = onOpenNoticePlaceCategory,
+            onOpenHistory = onOpenNoticeHistory,
+            onOpenSaved = onOpenNoticeSaved
+        )
     }
 }
 
@@ -114,6 +127,12 @@ fun HomeScreen(onFindCourses: () -> Unit, onOpenSearch: () -> Unit = {}, onOpenN
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Notifications, contentDescription = "알림", tint = RunBlack, modifier = Modifier.size(18.dp))
+                        if (remember { hasUnreadNotices() }) {
+                            Box(
+                                modifier = Modifier.align(Alignment.TopEnd).offset(x = (-4).dp, y = 4.dp)
+                                    .size(8.dp).clip(CircleShape).background(RunPurple)
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(28.dp))
@@ -644,29 +663,141 @@ private fun SearchTabChip(label: String, selected: Boolean, modifier: Modifier =
 }
 
 // ════════════════════════════════════════════════════════
-// 13 Home / Notifications — 실제 앱 상태(러닝 기록/저장 목록/추천 코스)에서 생성한 알림만
-// 보여준다. 백엔드 푸시가 없어서 Figma의 구체적인 마케팅 카피는 재현하지 않는다.
+// 13 Home / Notifications — 실제 앱 상태(러닝 기록/저장 목록/추천 코스/Finish Hub/주간 통계)에서
+// 생성한 알림만 보여준다. 백엔드 푸시가 없어서 Figma의 구체적인 마케팅 카피는 재현하지 않는다.
 // ════════════════════════════════════════════════════════
-private data class LocalNotice(val icon: String, val title: String, val message: String, val whenLabel: String)
 
-@Composable
-fun NotificationsScreen(onBack: () -> Unit) {
-    val notices = remember {
-        buildList {
-            val featured = RunQData.courses.filter { it.status != ContentStatus.HIDDEN && it.isFeatured }
-            if (featured.isNotEmpty()) {
-                add(LocalNotice("⚡", "오늘의 추천 코스가 있어요", "${featured.first().name} 코스를 확인해보세요.", "오늘"))
-            }
-            val savedCount = SavedItemsStore.savedCourses().size + SavedItemsStore.savedPlaces().size
-            if (savedCount > 0) {
-                add(LocalNotice("♡", "저장한 목록이 있어요", "저장한 코스·장소 ${savedCount}개를 My 탭에서 다시 확인해보세요.", "저장됨"))
-            }
-            val totalCount = RunHistoryStore.totalCount()
-            if (totalCount > 0) {
-                add(LocalNotice("🏃", "누적 러닝 ${totalCount}회 달성!", "총 ${String.format("%.1f", RunHistoryStore.totalKm())}km를 달렸어요.", "누적 기록"))
+// 알림을 눌렀을 때 이동할 실제 화면 — 전부 이미 있는 탭 간 요청 패턴(CourseTabRequest 등)을 탄다.
+private sealed class NoticeAction {
+    data class OpenCourse(val course: Course) : NoticeAction()
+    data class OpenPlaceCategory(val hubId: String?, val category: PlaceCategory) : NoticeAction()
+    object OpenHistory : NoticeAction()
+    object OpenSaved : NoticeAction()
+}
+
+private data class LocalNotice(
+    val id: String,
+    val icon: String,
+    val title: String,
+    val message: String,
+    val timestampMillis: Long,
+    val action: NoticeAction? = null
+)
+
+// 오늘/어제/그 이전 날짜별로 묶어 보여주기 위한 라벨.
+private fun dayLabel(timestampMillis: Long): String {
+    val cal = java.util.Calendar.getInstance()
+    val todayYear = cal.get(java.util.Calendar.YEAR); val todayDay = cal.get(java.util.Calendar.DAY_OF_YEAR)
+    cal.timeInMillis = timestampMillis
+    val diffDays = when {
+        cal.get(java.util.Calendar.YEAR) == todayYear -> todayDay - cal.get(java.util.Calendar.DAY_OF_YEAR)
+        cal.get(java.util.Calendar.YEAR) < todayYear -> Int.MAX_VALUE
+        else -> Int.MIN_VALUE
+    }
+    return when (diffDays) {
+        0 -> "오늘"
+        1 -> "어제"
+        else -> java.text.SimpleDateFormat("M.d", java.util.Locale.KOREA).format(timestampMillis)
+    }
+}
+
+// 알림 목록 생성 — 각 알림은 전부 실제 앱 데이터에서만 만들어진다(가짜 문구 없음).
+private fun buildNotices(): List<LocalNotice> {
+    return buildList {
+        val featured = RunQData.courses.filter { it.status != ContentStatus.HIDDEN && it.isFeatured }
+        if (featured.isNotEmpty()) {
+            val course = featured.first()
+            add(
+                LocalNotice(
+                    id = "featured_${course.id}", icon = "⚡", title = "오늘의 추천 코스가 있어요",
+                    message = "${course.name} 코스를 확인해보세요.", timestampMillis = System.currentTimeMillis(),
+                    action = NoticeAction.OpenCourse(course)
+                )
+            )
+        }
+
+        val savedCount = SavedItemsStore.savedCourses().size + SavedItemsStore.savedPlaces().size
+        if (savedCount > 0) {
+            add(
+                LocalNotice(
+                    id = "saved_count", icon = "♡", title = "저장한 목록이 있어요",
+                    message = "저장한 코스·장소 ${savedCount}개를 My 탭에서 다시 확인해보세요.",
+                    timestampMillis = System.currentTimeMillis(), action = NoticeAction.OpenSaved
+                )
+            )
+        }
+
+        val records = RunHistoryStore.all() // timestampMillis 내림차순
+        val latestRecord = records.firstOrNull()
+        val totalCount = records.size
+        if (totalCount > 0 && latestRecord != null) {
+            add(
+                LocalNotice(
+                    id = "total_count_$totalCount", icon = "🏃", title = "누적 러닝 ${totalCount}회 달성!",
+                    message = "총 ${String.format("%.1f", RunHistoryStore.totalKm())}km를 달렸어요.",
+                    timestampMillis = latestRecord.timestampMillis, action = NoticeAction.OpenHistory
+                )
+            )
+
+            // 방금 완주한 코스의 Finish Hub에 큐레이션 카페가 있을 때만 추천한다 — 없으면 알림 자체를 안 만든다.
+            val hub = latestRecord.courseId
+                ?.let { courseId -> RunQData.courses.find { it.id == courseId } }
+                ?.finishHubIds?.firstOrNull()?.let { findHub(it) }
+            if (hub != null) {
+                val cafes = topCuratedCafes(hub)
+                if (cafes.isNotEmpty()) {
+                    add(
+                        LocalNotice(
+                            id = "hub_reco_${hub.id}_${latestRecord.id}", icon = "📍", title = "Finish Hub 추천",
+                            message = "오늘 러닝 후 들르기 좋은 ${hub.name} 카페 ${cafes.size}곳을 모아봤어요.",
+                            timestampMillis = latestRecord.timestampMillis,
+                            action = NoticeAction.OpenPlaceCategory(hub.id, PlaceCategory.CAFE)
+                        )
+                    )
+                }
             }
         }
-    }
+
+        // 이번 주 러닝 기록이 있을 때만 리포트를 보여준다 — 지난주 기록이 있으면 거리 변화도 같이 계산.
+        val thisWeek = RunHistoryStore.recordsInWeek(0)
+        if (thisWeek.isNotEmpty()) {
+            val thisWeekKm = thisWeek.totalDistanceKm()
+            val lastWeekKm = RunHistoryStore.recordsInWeek(1).totalDistanceKm()
+            val paceLabel = thisWeek.avgPaceLabel()
+            val compareText = if (lastWeekKm > 0.01) {
+                val diff = thisWeekKm - lastWeekKm
+                val diffLabel = String.format("%.1f", kotlin.math.abs(diff))
+                when {
+                    diff > 0.01 -> " 지난주보다 ${diffLabel}km 더 달렸어요."
+                    diff < -0.01 -> " 지난주보다 ${diffLabel}km 적게 달렸어요."
+                    else -> " 지난주와 비슷한 페이스예요."
+                }
+            } else ""
+            add(
+                LocalNotice(
+                    id = "weekly_report_${thisWeek.size}_${String.format("%.1f", thisWeekKm)}",
+                    icon = "📊", title = "주간 러닝 리포트가 도착했어요",
+                    message = "이번 주 총 ${String.format("%.1f", thisWeekKm)}km" +
+                        (paceLabel?.let { " · 평균 페이스 $it/km" } ?: "") + "." + compareText,
+                    timestampMillis = System.currentTimeMillis(), action = NoticeAction.OpenHistory
+                )
+            )
+        }
+    }.sortedByDescending { it.timestampMillis }
+}
+
+fun hasUnreadNotices(): Boolean = buildNotices().any { !NotificationReadStore.isRead(it.id) }
+
+@Composable
+fun NotificationsScreen(
+    onBack: () -> Unit,
+    onOpenCourse: (Course) -> Unit = {},
+    onOpenPlaceCategory: (String?, PlaceCategory) -> Unit = { _, _ -> },
+    onOpenHistory: () -> Unit = {},
+    onOpenSaved: () -> Unit = {}
+) {
+    val notices = remember { buildNotices() }
+    var readVersion by remember { mutableStateOf(0) } // 읽음 처리 후 안읽음 점 갱신용 트리거
 
     Column(modifier = Modifier.fillMaxSize().background(RunCream).padding(20.dp)) {
         Spacer(Modifier.height(40.dp))
@@ -688,24 +819,49 @@ fun NotificationsScreen(onBack: () -> Unit) {
                 mascot = R.drawable.mascot_bear
             )
         } else {
+            val grouped = notices.groupBy { dayLabel(it.timestampMillis) }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(notices) { notice ->
-                    Box(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                            .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(20.dp)).padding(16.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                grouped.forEach { (label, group) ->
+                    item(key = "header_$label") {
+                        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunGray, modifier = Modifier.padding(top = 4.dp, bottom = 2.dp))
+                    }
+                    items(group, key = { it.id }) { notice ->
+                        key(readVersion) {
+                            val isUnread = !NotificationReadStore.isRead(notice.id)
                             Box(
-                                modifier = Modifier.size(42.dp).clip(CircleShape).background(RunLime.copy(alpha = 0.3f)),
-                                contentAlignment = Alignment.Center
-                            ) { Text(notice.icon, fontSize = 16.sp) }
-                            Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(notice.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
-                                Spacer(Modifier.height(4.dp))
-                                Text(notice.message, fontSize = 12.sp, color = RunGray)
-                                Spacer(Modifier.height(6.dp))
-                                Text(notice.whenLabel, fontSize = 11.sp, color = RunGray)
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                                    .background(RunWhite).border(1.dp, RunBorderGray, RoundedCornerShape(20.dp))
+                                    .clickable {
+                                        NotificationReadStore.markRead(notice.id)
+                                        readVersion++
+                                        when (val action = notice.action) {
+                                            is NoticeAction.OpenCourse -> onOpenCourse(action.course)
+                                            is NoticeAction.OpenPlaceCategory -> onOpenPlaceCategory(action.hubId, action.category)
+                                            NoticeAction.OpenHistory -> onOpenHistory()
+                                            NoticeAction.OpenSaved -> onOpenSaved()
+                                            null -> {}
+                                        }
+                                    }
+                                    .padding(16.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier.size(42.dp).clip(CircleShape).background(RunLime.copy(alpha = 0.3f)),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(notice.icon, fontSize = 16.sp) }
+                                    Spacer(Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(notice.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+                                            if (isUnread) {
+                                                Spacer(Modifier.width(6.dp))
+                                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(RunPurple))
+                                            }
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(notice.message, fontSize = 12.sp, color = RunGray)
+                                    }
+                                }
                             }
                         }
                     }

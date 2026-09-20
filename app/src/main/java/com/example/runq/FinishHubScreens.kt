@@ -148,6 +148,13 @@ private fun curatedPlaces(hub: FinishHub, category: PlaceCategory): List<FinishH
         .filter { it.finishHubId == hub.id && it.category == category && it.status != ContentStatus.HIDDEN }
         .sortedBy { it.displayOrder }
 
+// "이 Finish Hub 근처에서 러닝 후 들르기 좋은 카페" 추천 알림용 — Place 탭 추천순과 같은
+// 기준(사진+소개문구 채워진 곳 우선)으로 큐레이션 카페 중 상위 N개만 뽑는다.
+fun topCuratedCafes(hub: FinishHub, count: Int = 3): List<FinishHubPlace> =
+    curatedPlaces(hub, PlaceCategory.CAFE)
+        .sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenByDescending { placeRichnessScore(it) }.thenBy { it.displayOrder })
+        .take(count)
+
 // distance_from_hub_m이 아직 비어있어도 장소/Hub 둘 다 좌표가 있으면 화면 표시용으로
 // 즉석 계산한다(콘텐츠 JSON에는 쓰지 않음 — 계산값과 팀이 확정한 값을 구분해서 다룬다).
 fun FinishHubPlace.distanceMeters(hub: FinishHub?): Double? {
