@@ -350,7 +350,7 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
                     .background(RunWhite).padding(16.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    EnvChip("☀️ ${safety?.temp?.let { "맑음 $it" } ?: "날씨 확인중"}", Color(0xFFFBF8D9), Modifier.weight(1f))
+                    EnvChip("${skyEmoji(safety?.sky)} ${weatherLabel(safety)}", Color(0xFFFBF8D9), Modifier.weight(1f))
                     EnvChip("🍃 미세먼지 ${safety?.pm10 ?: "-"}", Color(0xFFF1F6EC), Modifier.weight(1f))
                     EnvChip("💨 바람 ${safety?.wind ?: "-"}", Color(0xFFE9F1FB), Modifier.weight(1f))
                 }
@@ -376,6 +376,25 @@ fun RunReadyScreen(course: Course, onBack: () -> Unit, onStart: () -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+// 하늘 상태(sky)는 실제 API 값이 있을 때만 채워진다(SafetyApiService.fetchSafety 참고) —
+// 값이 없으면 "맑음"처럼 임의로 단정하지 않고 기온만, 그것도 없으면 "확인중"으로 보여준다.
+private fun skyEmoji(sky: String?): String = when (sky) {
+    "맑음" -> "☀️"; "구름많음" -> "🌥️"; "흐림" -> "☁️"
+    "비", "비/눈" -> "🌧️"; "눈" -> "❄️"; "소나기" -> "🌦️"
+    else -> "🌡️"
+}
+
+private fun weatherLabel(safety: SafetyInfo?): String {
+    val sky = safety?.sky
+    val temp = safety?.temp?.takeIf { it != "-" }
+    return when {
+        sky != null && temp != null -> "$sky $temp"
+        sky != null -> sky
+        temp != null -> temp
+        else -> "날씨 확인중"
     }
 }
 
