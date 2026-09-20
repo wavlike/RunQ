@@ -45,12 +45,22 @@ private data class PlaceJson(
 
 private data class RoutePointJson(val lat: Double, val lng: Double)
 
+// 팀이 직접 확인한 행사 정보 — TourAPI searchFestival2가 놓치거나 정보가 부실할 때도
+// 항상 정확한 날짜/전화/웹사이트가 뜨도록 큐레이션으로 보장한다(FinishHubScreens.fetchFestivals에서 병합).
+private data class FestivalJson(
+    val event_id: String?, val event_name: String?, val address: String?,
+    val event_start_date: String?, val event_end_date: String?,
+    val phone: String?, val website: String?, val short_copy: String?,
+    val lat: Double?, val lng: Double?, val display_order: Int?, val status: String?
+)
+
 object RunQData {
     private val gson = Gson()
 
     val courses: List<Course> by lazy { loadCourses() }
     val finishHubs: List<FinishHub> by lazy { loadFinishHubs() }
     val places: List<FinishHubPlace> by lazy { loadPlaces() }
+    val curatedFestivals: List<FinishHubPlace> by lazy { loadFestivals() }
 
     private fun readAsset(path: String): String? = runCatching {
         RunQApplication.instance.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -160,6 +170,32 @@ object RunQData {
                 status = parseContentStatus(p.status),
                 isCurated = true,
                 imageUrl = p.runq_image_url?.takeIf { it.isNotBlank() } ?: p.tourapi_image_url?.takeIf { it.isNotBlank() }
+            )
+        }
+    }
+
+    private fun loadFestivals(): List<FinishHubPlace> {
+        val json = readAsset("data/festivals.json") ?: return emptyList()
+        val type = object : TypeToken<List<FestivalJson>>() {}.type
+        val raw: List<FestivalJson> = runCatching { gson.fromJson<List<FestivalJson>>(json, type) }.getOrDefault(emptyList())
+        return raw.mapNotNull { f ->
+            val id = f.event_id ?: return@mapNotNull null
+            FinishHubPlace(
+                title = f.event_name ?: id,
+                addr = f.address ?: "",
+                category = PlaceCategory.EVENT,
+                contentTypeId = "15",
+                id = id,
+                lat = f.lat,
+                lng = f.lng,
+                shortCopy = f.short_copy,
+                eventStartDate = f.event_start_date,
+                eventEndDate = f.event_end_date,
+                phone = f.phone,
+                website = f.website,
+                displayOrder = f.display_order ?: 999,
+                status = parseContentStatus(f.status),
+                isCurated = true
             )
         }
     }

@@ -83,7 +83,9 @@ data class FinishHubPlace(
     val isCurated: Boolean = false,    // RunQ 큐레이션(엑셀) 출처인지
     val eventStartDate: String? = null, // 행사(EVENT)만 사용 — yyyyMMdd
     val eventEndDate: String? = null,   // 행사(EVENT)만 사용 — yyyyMMdd
-    val imageUrl: String? = null        // 큐레이션(runq_image_url/tourapi_image_url) 또는 TourAPI firstimage
+    val imageUrl: String? = null,       // 큐레이션(runq_image_url/tourapi_image_url) 또는 TourAPI firstimage
+    val phone: String? = null,          // 큐레이션 전화번호 — 있으면 TourAPI/카카오 조회값보다 우선
+    val website: String? = null         // 큐레이션 공식 웹사이트 URL
 )
 
 // 행사 진행 상태 — 오늘 날짜와 시작/종료일을 비교해 계산한다(API가 상태를 안 줘서 직접 판정).
@@ -250,7 +252,7 @@ suspend fun fetchFestivals(): List<FinishHubPlace> {
         TourApiClient.api.searchFestivals(eventStartDate = queryFromYmd).response.body.items?.item ?: emptyList()
     }.getOrDefault(emptyList())
 
-    val places = items.map { f ->
+    val apiPlaces = items.map { f ->
         FinishHubPlace(
             title = f.title ?: "-",
             addr = f.addr1 ?: "",
@@ -264,6 +266,10 @@ suspend fun fetchFestivals(): List<FinishHubPlace> {
             imageUrl = f.firstImage?.takeIf { it.isNotBlank() }
         )
     }
+    // 팀이 직접 확인한 행사 정보(RunQData.curatedFestivals)를 먼저 두고, 같은 행사가
+    // API에도 잡히면 중복 없이 큐레이션 쪽만 남긴다 — EAT/CAFE/SEE와 동일한 원칙.
+    val curatedFestivals = RunQData.curatedFestivals.filter { it.status != ContentStatus.HIDDEN }
+    val places = mergeCurated(curatedFestivals, apiPlaces)
     // 진행중 → 예정 → 마감 순으로, 상태가 같으면 시작일이 빠른 순으로 보여준다.
     return places.sortedWith(
         compareBy(
@@ -1453,12 +1459,24 @@ fun PlaceDetailScreen(place: FinishHubPlace, hubName: String? = null, hub: Finis
         // TourAPI/Kakao 값으로 보완한다.
         PlaceInfoRow("주소", place.addr.ifBlank { detail?.addr1?.takeIf { it.isNotBlank() } ?: kakaoInfo?.address ?: "주소 정보 준비중" })
         Spacer(Modifier.height(10.dp))
-        PlaceInfoRow("전화", detail?.tel?.takeIf { it.isNotBlank() } ?: kakaoInfo?.phone ?: "정보 없음")
+        PlaceInfoRow("전화", place.phone?.takeIf { it.isNotBlank() } ?: detail?.tel?.takeIf { it.isNotBlank() } ?: kakaoInfo?.phone ?: "정보 없음")
         intro?.hoursLabel()?.let { hours ->
             Spacer(Modifier.height(10.dp))
             PlaceInfoRow("운영시간", hours + (intro?.restDateLabel()?.let { " · 휴무 $it" } ?: ""))
         }
         Spacer(Modifier.height(20.dp))
+
+        val websiteUrl = place.website
+        if (websiteUrl != null) {
+            Text(
+                "공식 웹사이트 방문 →", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = RunPurple,
+                modifier = Modifier.clickable {
+                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl))) }
+                    catch (e: ActivityNotFoundException) { /* 브라우저가 없는 기기 — 조용히 무시 */ }
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+        }
 
         val kakaoPlaceUrl = kakaoInfo?.placeUrl
         if (kakaoPlaceUrl != null) {
