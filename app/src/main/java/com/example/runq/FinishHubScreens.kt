@@ -130,6 +130,16 @@ data class FinishHubResult(
 private val cafeKeywords = listOf("카페", "커피", "베이커리", "로스터리", "coffee", "cafe")
 private val seeContentTypeIds = listOf(12, 14, 15, 28) // 관광지 / 문화시설 / 축제행사 / 레포츠
 
+// "추천순" 정렬에서 사진/소개문구가 다 채워진 곳을 위로 올리기 위한 점수.
+// 운영시간까지는 여기서 못 본다 — 그건 상세화면에서만 TourAPI(detailIntro2)로 조회하는
+// 정보라, 목록 단계에서 쓰려면 장소 수만큼 추가 API 호출이 필요해서 뺐다.
+private fun placeRichnessScore(place: FinishHubPlace): Int {
+    var score = 0
+    if (place.imageUrl != null) score += 1
+    if (!place.shortCopy.isNullOrBlank()) score += 1
+    return score
+}
+
 // RunQData.places(엑셀 큐레이션)를 먼저 노출하고, 이름이 겹치지 않는 API 결과만 뒤에 붙인다.
 private fun curatedPlaces(hub: FinishHub, category: PlaceCategory): List<FinishHubPlace> =
     RunQData.places
@@ -831,7 +841,8 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
         mutableStateOf(activeHubs.firstOrNull { it.id == pendingRequest.first } ?: activeHubs.firstOrNull())
     }
     var category by remember { mutableStateOf(pendingRequest.second) }
-    var sortByDistance by remember { mutableStateOf(true) }
+    // 처음 들어왔을 땐 "추천순"이 기본 — 거리순은 사용자가 직접 눌렀을 때만.
+    var sortByDistance by remember { mutableStateOf(false) }
     var hubMenuExpanded by remember { mutableStateOf(false) }
 
     // RunQ 큐레이션(JSON)만 보여주면 실시간 TourAPI 데이터가 빠지므로, HubPlacesScreen과
@@ -877,7 +888,15 @@ fun PlaceHomeScreen(onPlaceClick: (FinishHub, FinishHubPlace) -> Unit, onSeeAll:
             else if (category == null) allPlaces
             else allPlaces.filter { it.category == category }
         if (sortByDistance) source.sortedBy { it.distanceMeters(hub) ?: Double.MAX_VALUE }
-        else source.sortedWith(compareByDescending<FinishHubPlace> { it.isFeatured }.thenBy { it.displayOrder })
+        // 추천순: RunQ가 고른 곳(isFeatured)이 먼저, 그 다음은 "얼마나 채워진 정보인지"
+        // (사진 + 큐레이션 소개 문구가 둘 다 있는 곳)를 위로 올린다. 운영시간까지 기준에
+        // 넣고 싶었지만 그건 상세화면에서만 조회하는 TourAPI 정보라, 목록에 있는 장소
+        // 수만큼 매번 추가로 API를 호출해야 해서(속도/비용 문제로) 뺐다.
+        else source.sortedWith(
+            compareByDescending<FinishHubPlace> { it.isFeatured }
+                .thenByDescending { placeRichnessScore(it) }
+                .thenBy { it.displayOrder }
+        )
     }
 
     if (currentHub == null) {
