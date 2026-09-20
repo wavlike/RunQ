@@ -561,7 +561,11 @@ private fun FreeRunSummaryModal(record: RunRecord, onDismiss: () -> Unit) {
     ) {
         Text("RUN COMPLETE", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = RunGray)
         Spacer(Modifier.height(6.dp))
-        Text("자유 러닝 완료!", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+        Text("러닝 완료!", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = RunBlack)
+        Spacer(Modifier.height(4.dp))
+        // "다음 러닝으로 설정"한 코스를 따라 뛴 경우엔 그 코스 이름을, 아니면 "자유 러닝"을 보여준다
+        // (record.courseName이 이미 이 우선순위로 채워져 있음).
+        Text(record.courseName, fontSize = 13.sp, color = RunGray)
         Spacer(Modifier.height(20.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             CourseInfoLine("거리", String.format(java.util.Locale.US, "%.2f KM", record.distanceKm), Modifier.weight(1f))
@@ -773,7 +777,7 @@ private fun buildNotices(): List<LocalNotice> {
         if (savedCount > 0) {
             add(
                 LocalNotice(
-                    id = "saved_count", icon = "♡", title = "저장한 목록이 있어요",
+                    id = "saved_count_$savedCount", icon = "♡", title = "저장한 목록이 있어요",
                     message = "저장한 코스·장소 ${savedCount}개를 My 탭에서 다시 확인해보세요.",
                     timestampMillis = System.currentTimeMillis(), action = NoticeAction.OpenSaved
                 )
