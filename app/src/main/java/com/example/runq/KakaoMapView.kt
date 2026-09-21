@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -53,10 +54,12 @@ import com.kakao.vectormap.route.RouteLineStylesSet
 /** MapView의 start/resume/pause/destroy를 Compose 생명주기에 맞춰 관리하는 저수준 래퍼. */
 @Composable
 private fun rememberKakaoMapView(
-    onMapReady: (KakaoMap) -> Unit
+    onMapReady: (KakaoMap) -> Unit,
+    onError: (Exception) -> Unit = {}
 ): MapView {
     val lifecycleOwner = LocalLifecycleOwner.current
     val onMapReadyState = rememberUpdatedState(onMapReady)
+    val onErrorState = rememberUpdatedState(onError)
     val context = LocalContext.current
     val mapView = remember { MapView(context) }
 
@@ -64,7 +67,12 @@ private fun rememberKakaoMapView(
         mapView.start(
             object : MapLifeCycleCallback() {
                 override fun onMapDestroy() { /* no-op */ }
-                override fun onMapError(exception: Exception) { /* 지도 초기화 실패 — 로그로 확인 필요 */ }
+                override fun onMapError(exception: Exception) {
+                    // 예전엔 여기서 아무것도 안 해서 인증 실패(키 해시 불일치 등)가 나면
+                    // 사용자한텐 그냥 빈 화면으로만 보이고 원인을 알 방법이 없었다.
+                    android.util.Log.e("KakaoMapView", "지도 초기화 실패", exception)
+                    onErrorState.value(exception)
+                }
             },
             object : KakaoMapReadyCallback() {
                 override fun onMapReady(kakaoMap: KakaoMap) {
@@ -116,8 +124,21 @@ fun KakaoRouteMap(
     }
 
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    var mapError by remember { mutableStateOf<Exception?>(null) }
     var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
-    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it })
+    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it }, onError = { mapError = it })
+
+    if (mapError != null) {
+        // 예전엔 인증 실패(키 해시 불일치 등)가 나도 그냥 빈 화면이라 원인을 알 수 없었다.
+        // 실제 원인(주로 MapAuthException 메시지)을 화면에도 보여줘서 바로 진단할 수 있게 한다.
+        Box(modifier = modifier.background(RunBgGray), contentAlignment = Alignment.Center) {
+            Text(
+                "지도를 불러오지 못했어요.\n${mapError?.message ?: mapError?.javaClass?.simpleName ?: "알 수 없는 오류"}",
+                fontSize = 12.sp, color = RunGray, textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
 
     AndroidView(modifier = modifier, factory = { mapView })
 
@@ -206,7 +227,18 @@ fun KakaoPlacesMap(
 
     val context = LocalContext.current
     var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
-    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it })
+    var mapError by remember { mutableStateOf<Exception?>(null) }
+    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it }, onError = { mapError = it })
+
+    if (mapError != null) {
+        Box(modifier = modifier.background(RunBgGray), contentAlignment = Alignment.Center) {
+            Text(
+                "지도를 불러오지 못했어요.\n${mapError?.message ?: mapError?.javaClass?.simpleName ?: "알 수 없는 오류"}",
+                fontSize = 12.sp, color = RunGray, textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
 
     AndroidView(modifier = modifier, factory = { mapView })
 
