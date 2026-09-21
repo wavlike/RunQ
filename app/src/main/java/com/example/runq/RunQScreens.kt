@@ -513,7 +513,9 @@ fun RunningScreen() {
                                 courseName = currentCourse?.name ?: "자유 러닝",
                                 timestampMillis = System.currentTimeMillis(),
                                 distanceKm = finalDist,
-                                elapsedSeconds = elapsedSeconds
+                                elapsedSeconds = elapsedSeconds,
+                                tempLabel = safety?.temp,
+                                pm10Label = safety?.pm10
                             )
                             RunHistoryStore.add(record)
                             finishedRecord = record

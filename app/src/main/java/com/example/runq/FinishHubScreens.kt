@@ -714,7 +714,10 @@ fun CompleteScreen(
     val caloriesEstimate = remember(distanceKm) { (distanceKm * 65).toInt() }
 
     // 완주 화면에 처음 진입했을 때 딱 한 번만 기록을 저장한다(재구성/회전 시 중복 저장 방지).
+    // 날씨는 저장 직전에 한 번만 조회해서 같이 저장한다 — 별도 state로 분리하면 날씨 조회가
+    // 끝나기 전에 저장이 먼저 실행되거나, 조회 후 재실행돼 중복 저장될 위험이 있다.
     LaunchedEffect(course.id, distanceKm, elapsedSeconds) {
+        val safety = runCatching { fetchSafety(course.weatherGrid()) }.getOrNull()
         RunHistoryStore.add(
             RunRecord(
                 id = java.util.UUID.randomUUID().toString(),
@@ -722,7 +725,9 @@ fun CompleteScreen(
                 courseName = course.name,
                 timestampMillis = System.currentTimeMillis(),
                 distanceKm = distanceKm,
-                elapsedSeconds = elapsedSeconds
+                elapsedSeconds = elapsedSeconds,
+                tempLabel = safety?.temp,
+                pm10Label = safety?.pm10
             )
         )
     }
