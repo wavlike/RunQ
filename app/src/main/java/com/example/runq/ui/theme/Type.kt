@@ -1,34 +1,24 @@
 package com.example.runq.ui.theme
 
 import androidx.compose.material3.Typography
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp
-    )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
+// RunQ Foundations(Figma)가 "Noto Sans KR"을 전체 서체로 지정했으므로,
+// Material3 기본 타이포그래피(크기/줄높이는 그대로 유지)의 fontFamily만 전부 교체한다.
+private val base = Typography()
+val Typography = base.copy(
+    displayLarge = base.displayLarge.copy(fontFamily = NotoSansKR),
+    displayMedium = base.displayMedium.copy(fontFamily = NotoSansKR),
+    displaySmall = base.displaySmall.copy(fontFamily = NotoSansKR),
+    headlineLarge = base.headlineLarge.copy(fontFamily = NotoSansKR),
+    headlineMedium = base.headlineMedium.copy(fontFamily = NotoSansKR),
+    headlineSmall = base.headlineSmall.copy(fontFamily = NotoSansKR),
+    titleLarge = base.titleLarge.copy(fontFamily = NotoSansKR),
+    titleMedium = base.titleMedium.copy(fontFamily = NotoSansKR),
+    titleSmall = base.titleSmall.copy(fontFamily = NotoSansKR),
+    bodyLarge = base.bodyLarge.copy(fontFamily = NotoSansKR),
+    bodyMedium = base.bodyMedium.copy(fontFamily = NotoSansKR),
+    bodySmall = base.bodySmall.copy(fontFamily = NotoSansKR),
+    labelLarge = base.labelLarge.copy(fontFamily = NotoSansKR),
+    labelMedium = base.labelMedium.copy(fontFamily = NotoSansKR),
+    labelSmall = base.labelSmall.copy(fontFamily = NotoSansKR)
 )

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    한국관광공사 TourAPI가 돌려주는 firstimage(대표 이미지) URL이 아직 http(평문)로 오는 경우가
+    있어서(tong.visitkorea.or.kr), Android 9(API 28)+ 기본 정책인 cleartext 차단에 걸려 사진이
+    하나도 안 뜨는 문제가 생긴다. 앱 전체가 아니라 이 도메인 하나만 예외로 허용한다.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">tong.visitkorea.or.kr</domain>
+    </domain-config>
+</network-security-config>

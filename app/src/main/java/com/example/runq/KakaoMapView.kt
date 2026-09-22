@@ -1,0 +1,315 @@
+package com.example.runq
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.kakao.vectormap.KakaoMap
+import com.kakao.vectormap.KakaoMapReadyCallback
+import com.kakao.vectormap.LatLng
+import com.kakao.vectormap.MapLifeCycleCallback
+import com.kakao.vectormap.MapView
+import com.kakao.vectormap.camera.CameraUpdateFactory
+import com.kakao.vectormap.label.LabelOptions
+import com.kakao.vectormap.label.LabelStyle
+import com.kakao.vectormap.label.LabelStyles
+import com.kakao.vectormap.label.Label
+import com.kakao.vectormap.route.RouteLineOptions
+import com.kakao.vectormap.route.RouteLineSegment
+import com.kakao.vectormap.route.RouteLineStyle
+import com.kakao.vectormap.route.RouteLineStyles
+import com.kakao.vectormap.route.RouteLineStylesSet
+
+// ════════════════════════════════════════════════════════
+// Kakao Maps SDK v2 공용 지도 컴포저블.
+//
+// ⚠️ 이 파일은 실제 컴파일 검증을 못 한 상태예요(샌드박스에 Android SDK가 없음).
+// Label/RouteLine 쪽 클래스명·빌더 패턴은 Kakao 공식 문서 기준으로 최대한 맞췄지만,
+// Android Studio에서 처음 빌드할 때 이 파일이 제일 먼저 손볼 후보예요 —
+// 빨간 줄 뜨면 자동완성으로 실제 시그니처 맞춰주면 됩니다. 나머지 화면 코드는
+// 이 파일이 제공하는 KakaoRouteMap() 하나만 갖다 쓰는 구조라 여기만 고치면 전체가 고쳐져요.
+// ════════════════════════════════════════════════════════
+
+/** MapView의 start/resume/pause/destroy를 Compose 생명주기에 맞춰 관리하는 저수준 래퍼. */
+@Composable
+private fun rememberKakaoMapView(
+    onMapReady: (KakaoMap) -> Unit,
+    onError: (Exception) -> Unit = {}
+): MapView {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val onMapReadyState = rememberUpdatedState(onMapReady)
+    val onErrorState = rememberUpdatedState(onError)
+    val context = LocalContext.current
+    val mapView = remember { MapView(context) }
+
+    DisposableEffect(lifecycleOwner, mapView) {
+        mapView.start(
+            object : MapLifeCycleCallback() {
+                override fun onMapDestroy() { /* no-op */ }
+                override fun onMapError(exception: Exception) {
+                    // 예전엔 여기서 아무것도 안 해서 인증 실패(키 해시 불일치 등)가 나면
+                    // 사용자한텐 그냥 빈 화면으로만 보이고 원인을 알 방법이 없었다.
+                    android.util.Log.e("KakaoMapView", "지도 초기화 실패", exception)
+                    onErrorState.value(exception)
+                }
+            },
+            object : KakaoMapReadyCallback() {
+                override fun onMapReady(kakaoMap: KakaoMap) {
+                    onMapReadyState.value(kakaoMap)
+                }
+            }
+        )
+
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.resume()
+                Lifecycle.Event.ON_PAUSE -> mapView.pause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    return mapView
+}
+
+/**
+ * 코스 경로(RouteLine) + START/FINISH 라벨을 그리는 지도.
+ * routePoints가 비어있으면 start/finish 두 점만으로 직선을 그린다.
+ * currentLocation이 있으면(러닝 중) 현재 위치 라벨도 함께 표시한다.
+ */
+@Composable
+fun KakaoRouteMap(
+    modifier: Modifier = Modifier,
+    routePoints: List<RoutePoint>,
+    startPoint: RoutePoint?,
+    finishPoint: RoutePoint?,
+    currentLocation: RoutePoint? = null
+) {
+    if (BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank()) {
+        // 아직 Kakao Native App Key가 없는 상태 — 크래시 대신 안내만 표시
+        Box(
+            modifier = modifier.background(RunBgGray),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Kakao 지도 키가 설정되지 않았어요.\nlocal.properties에 KAKAO_NATIVE_APP_KEY를 채워주세요.",
+                fontSize = 12.sp, color = RunGray)
+        }
+        return
+    }
+
+    var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    var mapError by remember { mutableStateOf<Exception?>(null) }
+    var currentLocationLabel by remember { mutableStateOf<Label?>(null) }
+    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it }, onError = { mapError = it })
+
+    if (mapError != null) {
+        // 예전엔 인증 실패(키 해시 불일치 등)가 나도 그냥 빈 화면이라 원인을 알 수 없었다.
+        // 실제 원인(주로 MapAuthException 메시지)을 화면에도 보여줘서 바로 진단할 수 있게 한다.
+        Box(modifier = modifier.background(RunBgGray), contentAlignment = Alignment.Center) {
+            Text(
+                "지도를 불러오지 못했어요.\n${mapError?.message ?: mapError?.javaClass?.simpleName ?: "알 수 없는 오류"}",
+                fontSize = 12.sp, color = RunGray, textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
+
+    AndroidView(modifier = modifier, factory = { mapView })
+
+    // 지도 준비 완료 + 경로 데이터가 있을 때마다 RouteLine/라벨을 다시 그린다.
+    LaunchedEffect(kakaoMap, routePoints, startPoint, finishPoint) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        drawRoute(map, routePoints, startPoint, finishPoint)
+    }
+
+    // 러닝 중 현재 위치 — 라벨을 새로 만들지 않고 기존 라벨을 이동시켜서 깜빡임 없이 갱신.
+    LaunchedEffect(kakaoMap, currentLocation) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        val loc = currentLocation ?: return@LaunchedEffect
+        val position = LatLng.from(loc.lat, loc.lng)
+        val label = currentLocationLabel
+        if (label != null) {
+            runCatching { label.moveTo(position) }
+        } else {
+            runCatching {
+                val labelManager = map.labelManager
+                val styles = labelManager?.addLabelStyles(
+                    LabelStyles.from(LabelStyle.from(android.R.drawable.presence_invisible))
+                )
+                currentLocationLabel = labelManager?.layer?.addLabel(
+                    LabelOptions.from(position).setStyles(styles)
+                )
+            }
+        }
+        runCatching { map.moveCamera(CameraUpdateFactory.newCenterPosition(position)) }
+    }
+}
+
+// 카테고리 첫 글자(E/C/S)를 카테고리 색 원 안에 그려 넣은 마커 비트맵.
+// 예전엔 시스템 아이콘(초록/노랑/빨강 점)이라 EAT/CAFE/SEE 구분이 안 됐던 걸,
+// Figma "30 Places/Home" 시안처럼 실제 글자 배지로 바꿨다.
+private fun categoryLabelBitmap(context: Context, category: PlaceCategory): Bitmap {
+    val letter = when (category) {
+        PlaceCategory.EAT -> "E"
+        PlaceCategory.CAFE -> "C"
+        PlaceCategory.SEE -> "S"
+        PlaceCategory.EVENT -> "★"
+    }
+    val sizePx = (32 * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val radius = sizePx / 2f - 2f
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = category.accent.toArgb() }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, fillPaint)
+
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = sizePx * 0.08f
+    }
+    canvas.drawCircle(sizePx / 2f, sizePx / 2f, radius, borderPaint)
+
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        textSize = sizePx * 0.5f
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val textY = sizePx / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(letter, sizePx / 2f, textY, textPaint)
+    return bitmap
+}
+
+/**
+ * Finish Hub 주변 EAT/CAFE/SEE 장소 핀을 보여주는 지도. (Figma "30 Places/Home")
+ * hub 좌표를 중심으로 카메라를 맞추고, 좌표가 있는 place마다 카테고리색 라벨을 찍는다.
+ */
+@Composable
+fun KakaoPlacesMap(
+    modifier: Modifier = Modifier,
+    center: RoutePoint,
+    places: List<Pair<RoutePoint, PlaceCategory>>
+) {
+    if (BuildConfig.KAKAO_NATIVE_APP_KEY.isBlank()) {
+        Box(modifier = modifier.background(RunBgGray), contentAlignment = Alignment.Center) {
+            Text("Kakao 지도 키가 설정되지 않았어요.\nlocal.properties에 KAKAO_NATIVE_APP_KEY를 채워주세요.",
+                fontSize = 12.sp, color = RunGray)
+        }
+        return
+    }
+
+    val context = LocalContext.current
+    var kakaoMap by remember { mutableStateOf<KakaoMap?>(null) }
+    var mapError by remember { mutableStateOf<Exception?>(null) }
+    val mapView = rememberKakaoMapView(onMapReady = { kakaoMap = it }, onError = { mapError = it })
+
+    if (mapError != null) {
+        Box(modifier = modifier.background(RunBgGray), contentAlignment = Alignment.Center) {
+            Text(
+                "지도를 불러오지 못했어요.\n${mapError?.message ?: mapError?.javaClass?.simpleName ?: "알 수 없는 오류"}",
+                fontSize = 12.sp, color = RunGray, textAlign = TextAlign.Center
+            )
+        }
+        return
+    }
+
+    AndroidView(modifier = modifier, factory = { mapView })
+
+    LaunchedEffect(kakaoMap, center, places) {
+        val map = kakaoMap ?: return@LaunchedEffect
+        runCatching {
+            val labelManager = map.labelManager
+            val layer = labelManager?.layer
+            layer?.removeAll()
+            val stylesByCategory = PlaceCategory.entries.associateWith { category ->
+                labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(categoryLabelBitmap(context, category))))
+            }
+            places.forEach { (point, category) ->
+                layer?.addLabel(
+                    LabelOptions.from(LatLng.from(point.lat, point.lng)).setStyles(stylesByCategory[category])
+                )
+            }
+            val bounds = (places.map { it.first } + center).map { LatLng.from(it.lat, it.lng) }
+            if (bounds.size > 1) {
+                map.moveCamera(CameraUpdateFactory.fitMapPoints(bounds.toTypedArray(), 100))
+            } else {
+                map.moveCamera(CameraUpdateFactory.newCenterPosition(LatLng.from(center.lat, center.lng)))
+            }
+        }
+    }
+}
+
+private fun effectiveLine(routePoints: List<RoutePoint>, start: RoutePoint?, finish: RoutePoint?): List<RoutePoint> =
+    when {
+        routePoints.size >= 2 -> routePoints
+        start != null && finish != null -> listOf(start, finish)
+        else -> emptyList()
+    }
+
+private fun drawRoute(
+    kakaoMap: KakaoMap,
+    routePoints: List<RoutePoint>,
+    startPoint: RoutePoint?,
+    finishPoint: RoutePoint?
+) {
+    val line = effectiveLine(routePoints, startPoint, finishPoint)
+    if (line.isEmpty()) return
+
+    val latLngs = line.map { LatLng.from(it.lat, it.lng) }
+
+    runCatching {
+        val layer = kakaoMap.routeLineManager?.layer
+        layer?.removeAll()
+        // RouteLineStylesSet은 매니저에 등록하는 게 아니라 from()으로 바로 만들어서 쓴다.
+        val stylesSet = RouteLineStylesSet.from(
+            RouteLineStyles.from(RouteLineStyle.from(14f, android.graphics.Color.parseColor("#BB87E3")))
+        )
+        val segment = RouteLineSegment.from(latLngs).setStyles(stylesSet.getStyles(0))
+        layer?.addRouteLine(RouteLineOptions.from(segment))
+    }
+
+    runCatching {
+        val labelManager = kakaoMap.labelManager
+        val layer = labelManager?.layer
+        layer?.removeAll()
+        val start = startPoint ?: line.first()
+        val finish = finishPoint ?: line.last()
+        // LabelStyles는 LabelManager.addLabelStyles()로 등록해야 실제로 쓸 수 있는 스타일이 된다.
+        val startStyles = labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_online)))
+        val finishStyles = labelManager?.addLabelStyles(LabelStyles.from(LabelStyle.from(android.R.drawable.presence_busy)))
+        layer?.addLabel(LabelOptions.from(LatLng.from(start.lat, start.lng)).setStyles(startStyles))
+        layer?.addLabel(LabelOptions.from(LatLng.from(finish.lat, finish.lng)).setStyles(finishStyles))
+    }
+
+    runCatching {
+        val bounds = CameraUpdateFactory.fitMapPoints(latLngs.toTypedArray(), 80)
+        kakaoMap.moveCamera(bounds)
+    }
+}

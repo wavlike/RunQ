@@ -7,17 +7,14 @@ import retrofit2.http.Query
 
 // ────────────────────────────────────────────────
 // TourAPI 통신 설정 + 인터페이스
+// 서비스키는 local.properties → BuildConfig.TOUR_API_KEY 로 주입됨 (소스에 직접 노출 안 함)
 // ────────────────────────────────────────────────
 
-// ⚠️⚠️ 여기에 본인 인증키(Decoding 키)를 붙여넣으세요 ⚠️⚠️
-// (지금은 빠르게 테스트하려고 여기 직접 넣어요. GitHub 올릴 땐 빼야 하는데,
-//  그 안전하게 빼는 방법은 이 단계 성공한 뒤에 알려줄게요.)
-const val TOUR_API_KEY = "HAVRC68bADYCJJkl96ezCrfFdamvQIi3mnhg7/avItL8WBE9yOcLbFHW+YB4FD+PVnXND/TGuKbk/78heKHAKg=="
 // API 요청을 정의하는 인터페이스
 interface TourApi {
     @GET("locationBasedList2")
     suspend fun getNearbyPlaces(
-        @Query("serviceKey") serviceKey: String = TOUR_API_KEY,
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
         @Query("MobileOS") mobileOS: String = "AND",
         @Query("MobileApp") mobileApp: String = "RunQ",
         @Query("_type") type: String = "json",
@@ -28,6 +25,59 @@ interface TourApi {
         @Query("arrange") arrange: String = "E",         // E = 거리순 정렬
         @Query("contentTypeId") contentTypeId: Int       // 12관광지 / 39음식점
     ): TourResponse
+
+    // 장소 상세정보 (Place Detail 화면에서 contentId로 조회)
+    @GET("detailCommon2")
+    suspend fun getDetailCommon(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("contentId") contentId: String,
+        @Query("defaultYN") defaultYN: String = "Y",
+        @Query("firstImageYN") firstImageYN: String = "Y",
+        @Query("addrinfoYN") addrInfoYN: String = "Y",
+        @Query("overviewYN") overviewYN: String = "Y"
+    ): DetailCommonResponse
+
+    // 이름으로 TourAPI 콘텐츠 검색 — RunQ 큐레이션 장소 대부분은 tourapi_content_id가
+    // 비어있어서, 상세화면 진입 시 이걸로 콘텐츠를 찾아 운영시간/사진/설명을 보완한다.
+    @GET("searchKeyword2")
+    suspend fun searchKeyword(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("keyword") keyword: String,
+        @Query("numOfRows") numOfRows: Int = 5
+    ): TourResponse
+
+    // 장소 소개 상세 (운영시간/휴무일 등 — 콘텐츠타입별로 필드명이 다름, detailIntro2가 원본)
+    @GET("detailIntro2")
+    suspend fun getDetailIntro(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("contentId") contentId: String,
+        @Query("contentTypeId") contentTypeId: String
+    ): DetailIntroResponse
+
+    // 강릉 행사/축제 (Place 탭의 "행사" 카테고리)
+    // lDongRegnCd/lDongSignguCd = 법정동코드(지역): 강원특별자치도=51, 강릉시=150
+    @GET("searchFestival2")
+    suspend fun searchFestivals(
+        @Query("serviceKey") serviceKey: String = BuildConfig.TOUR_API_KEY,
+        @Query("MobileOS") mobileOS: String = "AND",
+        @Query("MobileApp") mobileApp: String = "RunQ",
+        @Query("_type") type: String = "json",
+        @Query("eventStartDate") eventStartDate: String,
+        @Query("eventEndDate") eventEndDate: String? = null,
+        @Query("lDongRegnCd") regnCd: String = "51",
+        @Query("lDongSignguCd") signguCd: String = "150",
+        @Query("numOfRows") numOfRows: Int = 30,
+        @Query("arrange") arrange: String = "O" // O = 제목순 (거리순 정렬 대상 좌표가 없어 제목순 사용)
+    ): FestivalResponse
 }
 
 // Retrofit 객체 (앱 전체에서 하나만 만들어 재사용)
